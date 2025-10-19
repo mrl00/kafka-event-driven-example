@@ -1,217 +1,243 @@
-```markdown
-# Kafka Order Service
+# Kafka Event-Driven Example
 
-A microservice-based application demonstrating an event-driven architecture using Kafka, written in Go. It consists of two services: `order-producer` and `order-consumer`, which produce and consume order events to/from a Kafka topic (`orders`). The project uses the `confluent-kafka-go` library and runs a Kafka cluster in KRaft mode using Docker Compose.
+A Go-based event-driven architecture example demonstrating Apache Kafka integration with order processing. This project showcases a producer-consumer pattern using a 3-node Kafka cluster with proper replication and fault tolerance.
 
-## Features
-- **Event-Driven Architecture**: Publishes and consumes order events using Kafka.
-- **Go 1.25.1**: Built with the latest Go version for robust performance.
-- **Kafka in KRaft Mode**: Runs a 3-broker Kafka cluster without ZooKeeper.
-- **Dockerized Services**: Services are built and run using Docker and Docker Buildx.
-- **Profile Support**: Configurable for `local`, `dev`, and `prod` environments via `APP_PROFILE`.
-- **Health Checks**: HTTP endpoints (`/health`) for monitoring service status.
-- **AKHQ**: Web UI for managing and inspecting Kafka topics at `http://localhost:8082`.
+## 🏗️ Architecture
 
-## Prerequisites
-- **Go**: Version 1.25.1.
-- **Docker**: Latest version with Docker Compose and Buildx support.
-- **Arch Linux** (or compatible OS): For local development.
-- **Dependencies**:
-  - `librdkafka` for `confluent-kafka-go`.
-  - Install on Arch Linux:
-    ```bash
-    sudo pacman -S git gcc pkgconf librdkafka
-    ```
+This project implements a microservices architecture with the following components:
 
-## Project Structure
+- **Order Producer**: HTTP service that generates and publishes order events to Kafka
+- **Order Consumer**: Service that consumes order events from Kafka and processes them
+- **Kafka Cluster**: 3-node Kafka cluster with KRaft mode (no Zookeeper)
+- **AKHQ**: Web UI for Kafka cluster management and monitoring
+
+## 📋 Features
+
+- **Event-Driven Architecture**: Asynchronous communication using Kafka
+- **High Availability**: 3-node Kafka cluster with replication factor of 3
+- **Health Checks**: HTTP endpoints for service health monitoring
+- **Docker Support**: Complete containerization with Docker Compose
+- **Kafka Management**: Built-in AKHQ for cluster monitoring
+- **Structured Logging**: Using Go's structured logging with slog
+- **Graceful Shutdown**: Proper context handling and resource cleanup
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Go 1.25.1+ (for local development)
+
+### Running with Docker Compose
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/mrl00/kafka-event-driven-example.git
+   cd kafka-event-driven-example
+   ```
+
+2. **Start the entire stack**
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Verify services are running**
+   ```bash
+   docker-compose ps
+   ```
+
+4. **Check logs**
+   ```bash
+   # View all logs
+   docker-compose logs -f
+   
+   # View specific service logs
+   docker-compose logs -f order-producer
+   docker-compose logs -f order-consumer
+   ```
+
+### Service Endpoints
+
+- **Order Producer**: http://localhost:4000
+  - Health Check: http://localhost:4000/health
+- **Order Consumer**: http://localhost:4001
+  - Health Check: http://localhost:4001/health
+- **AKHQ (Kafka UI)**: http://localhost:9090
+
+### Kafka Brokers
+
+- **Kafka1**: localhost:29092
+- **Kafka2**: localhost:39092
+- **Kafka3**: localhost:49092
+
+## 🏃‍♂️ Local Development
+
+### Prerequisites
+
+- Go 1.25.1+
+- Apache Kafka (or use Docker for Kafka)
+
+### Running Locally
+
+1. **Install dependencies**
+   ```bash
+   go mod download
+   ```
+
+2. **Start Kafka cluster** (using Docker)
+   ```bash
+   docker-compose up kafka1 kafka2 kafka3 -d
+   ```
+
+3. **Run the producer**
+   ```bash
+   go run cmd/order-producer/main.go
+   ```
+
+4. **Run the consumer** (in another terminal)
+   ```bash
+   go run cmd/order-consumer/main.go
+   ```
+
+## 📊 Project Structure
+
 ```
-kafka-order-service/
+kafka-event-driven-example/
 ├── cmd/
-│   ├── order-producer/
+│   ├── order-producer/          # Order producer service
 │   │   └── main.go
-│   └── order-consumer/
+│   └── order-consumer/          # Order consumer service
 │       └── main.go
-├── internal/
-│   ├── config/
-│   │   └── config.go
-│   └── kafka/
-│       └── kafka.go
 ├── docker/
-│   ├── Dockerfile.producer
-│   └── Dockerfile.consumer
-├── go.mod
-├── go.sum
-├── docker-compose.yml
-└── README.md
+│   ├── Dockerfile.producer      # Producer Docker image
+│   └── Dockerfile.consumer      # Consumer Docker image
+├── internal/
+│   ├── handler/                 # HTTP handlers
+│   │   ├── hc.go               # Health check handler
+│   │   └── hc_test.go          # Health check tests
+│   ├── kafka/                  # Kafka client implementation
+│   │   ├── kafka.go           # Core Kafka functionality
+│   │   └── kafka_test.go      # Kafka tests
+│   └── router/                 # HTTP router
+│       └── router.go
+├── docker-compose.yaml         # Multi-service orchestration
+├── go.mod                      # Go module definition
+├── go.sum                      # Go module checksums
+└── README.md                   # This file
 ```
 
-## Setup and Installation
+## 🔧 Configuration
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/mrl00/kafka-event-driven-example.git
-cd kafka-order-service
-```
+### Kafka Configuration
 
-### 2. Build Docker Images
-Use Docker Buildx to build the `order-producer` and `order-consumer` images.
+The Kafka cluster is configured with:
+- **3 brokers** with KRaft mode (no Zookeeper)
+- **3 partitions** per topic
+- **Replication factor of 3** for high availability
+- **Topic**: `orders`
+- **Consumer Group**: `order-consumer-group`
 
-#### Build `order-producer`
-```bash
-docker buildx build --file docker/Dockerfile.producer -t kafka-order-service-producer:latest .
-```
+### Order Event Schema
 
-#### Build `order-consumer`
-```bash
-docker buildx build --file docker/Dockerfile.consumer -t kafka-order-service-consumer:latest .
-```
-
-**Optional - Multi-Architecture Build**:
-```bash
-docker buildx build --platform linux/amd64,linux/arm64 --file docker/Dockerfile.producer -t kafka-order-service-producer:latest .
-docker buildx build --platform linux/amd64,linux/arm64 --file docker/Dockerfile.consumer -t kafka-order-service-consumer:latest .
-```
-
-### 3. Run the Application
-Create directories for Kafka data persistence:
-```bash
-mkdir -p kafka1_data kafka2_data kafka3_data
-```
-
-Start the Kafka cluster and services:
-```bash
-docker compose up -d
-```
-
-### 4. Verify Services
-- **Health Checks**:
-  ```bash
-  curl http://localhost:8080/health  # order-producer
-  curl http://localhost:8081/health  # order-consumer
-  ```
-  Expected output: `OK` (HTTP 200).
-
-- **Kafka Topic**:
-  Check logs to confirm the `orders` topic creation:
-  ```bash
-  docker compose logs order-producer | grep "Topic orders"
-  ```
-  Expected output: `Topic orders created successfully` or `Topic orders already exists`.
-
-- **AKHQ UI**:
-  Access the Kafka management UI at `http://localhost:8082`.
-
-### 5. Stop the Application
-```bash
-docker compose down -v
-```
-
-## Configuration
-The application supports three profiles: `local`, `dev`, and `prod`. Set the profile via the `APP_PROFILE` environment variable in `docker-compose.yml` or when running containers.
-
-### Example Configuration (`internal/config/config.go`)
 ```go
-type Config struct {
-	Profile      string
-	HTTPPort     string
-	KafkaBrokers []string
-	KafkaTopic   string
-	KafkaGroupID string
-}
-
-func LoadConfig() (Config, error) {
-	profile := os.Getenv("APP_PROFILE")
-	if profile == "" {
-		profile = "local"
-	}
-	switch profile {
-	case "local":
-		return Config{
-			Profile:      profile,
-			HTTPPort:     "8080",
-			KafkaBrokers: []string{"kafka1:19092", "kafka2:19092", "kafka3:19092"},
-			KafkaTopic:   "orders",
-			KafkaGroupID: "order-consumer-group",
-		}, nil
-	case "dev":
-		return Config{
-			Profile:      profile,
-			HTTPPort:     "8080",
-			KafkaBrokers: []string{"dev-kafka:9092"},
-			KafkaTopic:   "orders",
-			KafkaGroupID: "order-consumer-group",
-		}, nil
-	case "prod":
-		return Config{
-			Profile:      profile,
-			HTTPPort:     "8080",
-			KafkaBrokers: []string{"prod-kafka:9092"},
-			KafkaTopic:   "orders",
-			KafkaGroupID: "order-consumer-group",
-		}, nil
-	default:
-		return Config{}, fmt.Errorf("unknown profile: %s", profile)
-	}
+type OrderEvent struct {
+    OrderID    string    `json:"order_id"`
+    CustomerID string    `json:"customer_id"`
+    Amount     float64   `json:"amount"`
+    CreatedAt  time.Time `json:"created_at"`
 }
 ```
 
-## Troubleshooting
-- **Error: `exec ./order-producer: no such file or directory`**:
-  - Ensure `librdkafka1` is installed in the Docker image (`RUN apt-get install -y librdkafka1` in `Dockerfile.producer`).
-  - Verify binary permissions:
-    ```bash
-    docker run --rm -it kafka-order-service-producer:latest /bin/bash
-    ls -l /app/order-producer
-    chmod +x /app/order-producer
-    ```
-  - Check dynamic libraries:
-    ```bash
-    ldd /app/order-producer
-    ```
+## 🧪 Testing
 
-- **Error: `Unknown Topic Or Partition`**:
-  - Verify that `EnsureTopic` is creating the topic:
-    ```bash
-    docker compose logs order-producer | grep "Topic orders"
-    ```
-  - List topics:
-    ```bash
-    docker exec -it kafka1 kafka-topics.sh --list --bootstrap-server kafka1:19092
-    ```
+### Running Tests
 
-## CI/CD
-To integrate with GitHub Actions for automated builds:
+```bash
+# Run all tests
+go test ./...
 
-```yaml
-name: Build Producer
-on: [push]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Login to Docker Hub
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    - name: Build and push
-      run: |
-        docker buildx build --platform linux/amd64,linux/arm64 \
-          --file docker/Dockerfile.producer \
-          -t mrl00/kafka-order-service-producer:latest \
-          --push .
+# Run tests with coverage
+go test -cover ./...
+
+# Run specific package tests
+go test ./internal/handler
+go test ./internal/kafka
 ```
 
-## Contributing
-- Fork the repository.
-- Create a feature branch (`git checkout -b feature/your-feature`).
-- Commit changes (`git commit -m 'Add feature'`).
-- Push to the branch (`git push origin feature/your-feature`).
-- Open a Pull Request.
+### Test Coverage
 
-## License
-MIT License. See [LICENSE](LICENSE) for details.
-```
+The project includes unit tests for:
+- Health check handlers
+- Kafka producer/consumer functionality
+- Error handling scenarios
+
+## 📈 Monitoring
+
+### AKHQ Dashboard
+
+Access the AKHQ dashboard at http://localhost:9090 to:
+- Monitor Kafka cluster health
+- View topic details and message flow
+- Check consumer group status
+- Browse messages in topics
+
+### Health Checks
+
+Both services expose health check endpoints:
+- Producer: `GET /health`
+- Consumer: `GET /health`
+
+## 🐳 Docker Details
+
+### Multi-stage Builds
+
+Both services use multi-stage Docker builds:
+1. **Builder stage**: Compiles the Go application
+2. **Runner stage**: Creates minimal runtime image
+
+### Dependencies
+
+- **librdkafka**: C library for Kafka client
+- **dockerize**: For service dependency waiting
+- **ca-certificates**: For HTTPS connections
+
+## 🔄 Event Flow
+
+1. **Order Producer** generates sample order events
+2. Events are published to the `orders` topic
+3. **Order Consumer** subscribes to the topic
+4. Consumer processes events asynchronously
+5. Both services expose health check endpoints
+
+## 🛠️ Development
+
+### Adding New Event Types
+
+1. Define new event struct in `internal/kafka/kafka.go`
+2. Add producer/consumer methods for the new event type
+3. Update the main functions to handle the new events
+
+### Extending the API
+
+1. Add new handlers in `internal/handler/`
+2. Register routes in `internal/router/router.go`
+3. Add corresponding tests
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
+
+## 📚 Resources
+
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+- [Confluent Kafka Go Client](https://github.com/confluentinc/confluent-kafka-go)
+- [AKHQ Documentation](https://akhq.io/)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
