@@ -71,7 +71,7 @@ func main() {
 		if err := kafka.ProduceOrder(ctx, producer, order); err != nil {
 			log.Printf("Failed to produce order: %v", err)
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 
 	select {}
