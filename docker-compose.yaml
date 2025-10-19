@@ -21,7 +21,7 @@ services:
       dockerfile: docker/Dockerfile.consumer
     container_name: order_consumer
     hostname: order_consumer
-#    entrypoint: dockerize -wait tcp://order_producer:4000/health -timeout 60s /app/order-consumer
+    entrypoint: dockerize -wait tcp://order_producer:4000/health -timeout 60s /app/order-consumer
     ports:
       - "4001:4000"
     depends_on:
