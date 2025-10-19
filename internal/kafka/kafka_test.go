@@ -15,7 +15,8 @@ func TestGetBrokers(t *testing.T) {
 
 	t.Run("testing concat", func(t *testing.T) {
 		got := cfg.GetBrokers()
-		if got != "123" {
+		t.Log(got)
+		if got != "1,2,3" {
 			t.Error("getBrokers must return 123")
 		}
 	})
