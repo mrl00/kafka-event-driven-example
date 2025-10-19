@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"strconv"
 	"time"
@@ -82,6 +83,52 @@ func ProduceOrder(ctx context.Context, producer *kafka.Producer, order OrderEven
 	return nil
 }
 
+func NewConsumer(ctx context.Context, cfg Config) (*kafka.Consumer, error) {
+	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers":  cfg.GetBrokers(),
+		"group.id":           cfg.GroupID,
+		"auto.offset.reset":  "earliest",
+		"enable.auto.commit": true,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, fmt.Sprintf("cannot create consumer: %v", err))
+	}
+
+	err = consumer.SubscribeTopics([]string{cfg.Topic}, nil)
+	if err != nil {
+		consumer.Close()
+		return nil, fmt.Errorf("failed to subscribe topic %s: %v", cfg.Topic, err)
+	}
+
+	return consumer, nil
+}
+
+func ConsumeOrders(ctx context.Context, consumer *kafka.Consumer) error {
+	slog.InfoContext(ctx, "Consuming orders")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			msg, err := consumer.ReadMessage(2 * time.Second)
+			if err != nil {
+				if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+					continue
+				}
+				return fmt.Errorf("error reading message: %v", err)
+			}
+
+			var order OrderEvent
+			if err := json.Unmarshal(msg.Value, &order); err != nil {
+				return fmt.Errorf("error unmarshaling message: %v", err)
+			}
+
+			log.Printf("Consumed order: %+v\n", order)
+		}
+	}
+}
+
 func EnsureTopic(ctx context.Context, cfg Config) error {
 	admin, err := kafka.NewAdminClient(&kafka.ConfigMap{
 		"bootstrap.servers": cfg.GetBrokers(),
@@ -116,7 +163,7 @@ func EnsureTopic(ctx context.Context, cfg Config) error {
 
 	for i, result := range results {
 		if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
-			slog.WarnContext(ctx, "%s: %s %v", strconv.Itoa(i), result.Topic, result.Error)
+			slog.WarnContext(ctx, "%s: %s ", strconv.Itoa(i), result.Topic, result.Error.String(), nil)
 		}
 	}
 
