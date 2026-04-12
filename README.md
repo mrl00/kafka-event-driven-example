@@ -128,7 +128,26 @@ kafka-event-driven-example/
 
 ## 🔧 Configuration
 
-### Kafka Configuration
+### Configuration Management (Environment)
+
+Configuration is managed via environment variables for flexibility and 12-factor compatibility. For local development, the project automatically loads variables from a `.env` file (not committed); see `.env.example` for a template you can copy and edit.
+
+Supported variables:
+
+| Variable                   | Description                              | Default                      |
+|----------------------------|------------------------------------------|------------------------------|
+| `KAFKA_BROKERS`            | Comma-separated Kafka broker list         | (required)                   |
+| `KAFKA_TOPIC`              | Kafka topic for events                   | orders                       |
+| `KAFKA_GROUP_ID`           | Consumer group name (consumer only)      | order-consumer-group         |
+| `KAFKA_NUM_PARTITIONS`     | Number of topic partitions               | 3                            |
+| `KAFKA_REPLICATION_FACTOR` | Replication factor for topic             | 3                            |
+| `HTTP_PORT`                | HTTP server port (producer/consumer)     | 4000                         |
+
+Override these variables by editing `.env` (for local runs), exporting in your shell, or providing them with `docker-compose`/Kubernetes manifests in production. The app will fail fast if a required variable (such as `KAFKA_BROKERS`) is not set.
+
+See [`.env.example`](./.env.example) for a useful template.
+
+### Kafka Details
 
 The Kafka cluster is configured with:
 - **3 brokers** with KRaft mode (no Zookeeper)
