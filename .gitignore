@@ -1,0 +1,28 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+main
+order-producer
+order-consumer
+
+# Vendor directories
+/vendor/
+
+# Logs
+*.log
+
+# Coverage
+coverage.*
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# Docker
+**/tmp/
+
+# Local environment overrides
+.env

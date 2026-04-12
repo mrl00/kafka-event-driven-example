@@ -6,40 +6,41 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/mrl00/kafka-event-driven-example/internal/config"
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/router"
 )
 
-func server() {
+func server(port string) {
 	r := router.New()
-	if err := http.ListenAndServe(":4000", r); err != nil {
+	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal("failed to start server: ", err)
 	}
 }
 
 func main() {
 
-	go server()
+	cfg := config.LoadConfig(false)
+	go server(cfg.HTTPPort)
 
 	var ctx = context.Background()
 
-	cfg := kafka.Config{
-		//Brokers:           []string{"kafka1:19092", "kafka2:19092", "kafka3:19092"},
-		Brokers:           []string{"localhost:29092", "localhost:39092", "localhost:49092"},
-		Topic:             "orders",
-		NumOfPartitions:   3,
-		ReplicationFactor: 3,
+	kcfg := kafka.Config{
+		Brokers:           cfg.Brokers,
+		Topic:             cfg.Topic,
+		NumOfPartitions:   cfg.NumOfPartitions,
+		ReplicationFactor: cfg.ReplicationFactor,
 	}
 
-	ctx = context.WithValue(ctx, "topic", cfg.Topic)
+	ctx = context.WithValue(ctx, "topic", kcfg.Topic)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if err := kafka.EnsureTopic(ctx, cfg); err != nil {
+	if err := kafka.EnsureTopic(ctx, kcfg); err != nil {
 		log.Fatalf("ensure topic error: %v", err)
 	}
 
-	producer, err := kafka.NewProducer(cfg)
+	producer, err := kafka.NewProducer(kcfg)
 	if err != nil {
 		log.Fatalf("failed to create producer: %v", err)
 	}
