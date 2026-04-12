@@ -1,3 +1,6 @@
+[![CI](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/ci.yml/badge.svg)](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/ci.yml)
+[![Check Pull Request Source](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/branch-check.yml/badge.svg)](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/branch-check.yml)
+[![Docker Publish](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/docker-publish.yml)
 # Kafka Event-Driven Example
 
 A Go-based event-driven architecture example demonstrating Apache Kafka integration with order processing. This project showcases a producer-consumer pattern using a 3-node Kafka cluster with proper replication and fault tolerance.
