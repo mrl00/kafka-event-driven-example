@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: gofmt -l .
+
+      - name: Lint (go vet)
+        run: go vet ./...
+
+      - name: Build order-producer
+        run: go build -v ./cmd/order-producer
+
+      - name: Build order-consumer
+        run: go build -v ./cmd/order-consumer
+
+      - name: Run unit tests
+        run: go test -v ./internal/... ./cmd/...
