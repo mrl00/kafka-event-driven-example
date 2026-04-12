@@ -24,7 +24,8 @@ func main() {
 	var ctx = context.Background()
 
 	cfg := kafka.Config{
-		Brokers:           []string{"kafka1:19092", "kafka2:19092", "kafka3:19092"},
+		//Brokers:           []string{"kafka1:19092", "kafka2:19092", "kafka3:19092"},
+		Brokers:           []string{"localhost:29092", "localhost:39092", "localhost:49092"},
 		Topic:             "orders",
 		NumOfPartitions:   3,
 		ReplicationFactor: 3,
