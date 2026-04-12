@@ -128,7 +128,26 @@ kafka-event-driven-example/
 
 ## 🔧 Configuration
 
-### Kafka Configuration
+### Configuration Management (Environment)
+
+Configuration is managed via environment variables for flexibility and 12-factor compatibility. For local development, the project automatically loads variables from a `.env` file (not committed); see `.env.example` for a template you can copy and edit.
+
+Supported variables:
+
+| Variable                   | Description                              | Default                      |
+|----------------------------|------------------------------------------|------------------------------|
+| `KAFKA_BROKERS`            | Comma-separated Kafka broker list         | (required)                   |
+| `KAFKA_TOPIC`              | Kafka topic for events                   | orders                       |
+| `KAFKA_GROUP_ID`           | Consumer group name (consumer only)      | order-consumer-group         |
+| `KAFKA_NUM_PARTITIONS`     | Number of topic partitions               | 3                            |
+| `KAFKA_REPLICATION_FACTOR` | Replication factor for topic             | 3                            |
+| `HTTP_PORT`                | HTTP server port (producer/consumer)     | 4000                         |
+
+Override these variables by editing `.env` (for local runs), exporting in your shell, or providing them with `docker-compose`/Kubernetes manifests in production. The app will fail fast if a required variable (such as `KAFKA_BROKERS`) is not set.
+
+See [`.env.example`](./.env.example) for a useful template.
+
+### Kafka Details
 
 The Kafka cluster is configured with:
 - **3 brokers** with KRaft mode (no Zookeeper)
@@ -147,6 +166,34 @@ type OrderEvent struct {
     CreatedAt  time.Time `json:"created_at"`
 }
 ```
+
+## 🚦 CI/CD & Automation
+
+This project uses GitHub Actions to automate:
+- Build, lint, and test all Go code
+- Build and push Docker images to Docker Hub (for both order-producer and order-consumer) on every push to `main`
+- Sign images using cosign for supply chain security
+
+### Docker Images
+- Images are published at: `docker.io/<yourdockerhubuser>/kafka-event-driven-example-producer` and `docker.io/<yourdockerhubuser>/kafka-event-driven-example-consumer`
+- Each image is tagged with the Git commit SHA and related tags (see Docker Hub UI for details)
+
+**Example usage:**
+```sh
+docker pull docker.io/<yourdockerhubuser>/kafka-event-driven-example-producer:<sha-or-latest>
+docker run --env-file .env docker.io/<yourdockerhubuser>/kafka-event-driven-example-producer:<sha-or-latest>
+```
+
+- See required environment variables in the [Configuration](#configuration-management-environment) section above.
+- You must provide Kafka connection parameters either via `.env` or `-e`/`--env-file` at runtime for images to run correctly!
+
+Image signatures via cosign allow users to verify authenticity. For verification instructions see [cosign documentation](https://docs.sigstore.dev/cosign/overview/).
+
+You can find and edit the workflow config at:
+- [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) – Docker publish
+- [.github/workflows/ci.yml](.github/workflows/ci.yml) – Go build/test
+
+---
 
 ## 🧪 Testing
 

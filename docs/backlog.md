@@ -6,9 +6,9 @@ A prioritized, actionable improvement backlog for the Kafka Event-Driven Example
 
 ## 🛠️ Configuration Management
 
-- [ ] Switch broker, topic, group, and HTTP port definitions to environment variables
-- [ ] Add .env file support (with dotenv loading during development)
-- [ ] Document all configuration options in the README
+- [x] Switch broker, topic, group, and HTTP port definitions to environment variables
+- [x] Add .env file support (with dotenv loading during development)
+- [x] Document all configuration options in the README
 
 ## 📈 Observability & Monitoring
 
@@ -30,8 +30,8 @@ A prioritized, actionable improvement backlog for the Kafka Event-Driven Example
 
 ## 🚀 CI/CD & Automation
 
-- [ ] Add GitHub Actions for build, lint, and test on PRs
-- [ ] Add Docker image build & push steps to CI
+- [x] Add GitHub Actions for build, lint, and test on PRs
+- [x] Add Docker image build & push steps to CI
 
 ## 🌐 API & Service Design
 
