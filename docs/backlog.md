@@ -30,8 +30,8 @@ A prioritized, actionable improvement backlog for the Kafka Event-Driven Example
 
 ## 🚀 CI/CD & Automation
 
-- [ ] Add GitHub Actions for build, lint, and test on PRs
-- [ ] Add Docker image build & push steps to CI
+- [x] Add GitHub Actions for build, lint, and test on PRs
+- [x] Add Docker image build & push steps to CI
 
 ## 🌐 API & Service Design
 
