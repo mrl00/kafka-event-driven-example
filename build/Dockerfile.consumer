@@ -3,6 +3,8 @@ FROM golang:1.25.1 AS builder
 WORKDIR /app
 
 COPY go.mod ./
+COPY go.sum ./
+
 RUN go mod download
 
 COPY cmd/order-consumer/main.go ./cmd/order-consumer/main.go
@@ -13,8 +15,8 @@ RUN go build -o /app/order-consumer ./cmd/order-consumer/main.go
 FROM debian:bookworm-slim AS runner
 
 ENV PORT=4000
-
 ENV DOCKERIZE_VERSION=v0.9.6
+
 EXPOSE $PORT
 
 RUN apt-get update \

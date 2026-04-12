@@ -4,7 +4,6 @@
 
 # Dependency artifacts
 vendor/
-go.sum
 
 # Local configs/secrets
 .env
