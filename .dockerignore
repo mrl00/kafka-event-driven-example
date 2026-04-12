@@ -1,0 +1,31 @@
+# Version control
+.git
+.github/
+
+# Dependency artifacts
+vendor/
+go.sum
+
+# Local configs/secrets
+.env
+.env.*
+
+# Build/test output
+*.out
+*.test
+coverage.*
+bin/
+dist/
+
+# Docker output
+*.tar
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Docs/unneeded root files
+README.md
+docs/
