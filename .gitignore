@@ -26,3 +26,6 @@ coverage.*
 
 # Local environment overrides
 .env
+
+# Backlog
+docs/*
