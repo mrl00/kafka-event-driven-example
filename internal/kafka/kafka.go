@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
@@ -21,13 +20,17 @@ type Config struct {
 }
 
 func (c Config) GetBrokers() string {
-	var brokers = c.Brokers[0]
-	if len(c.Brokers) > 1 {
-		for _, broker := range c.Brokers[1:] {
-			brokers = brokers + "," + broker
-		}
+	if len(c.Brokers) == 0 {
+		return ""
 	}
-	return brokers
+	var brokers strings.Builder
+	for i, b := range c.Brokers {
+		if i > 0 {
+			brokers.WriteString(",")
+		}
+		brokers.WriteString(b)
+	}
+	return brokers.String()
 }
 
 type OrderEvent struct {
@@ -39,92 +42,93 @@ type OrderEvent struct {
 
 func NewProducer(cfg Config) (*kafka.Producer, error) {
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers": cfg.GetBrokers(),
-		"acks":              "all",
-		"retries":           5,
+		"bootstrap.servers":  cfg.GetBrokers(),
+		"acks":               "all",
+		"retries":            5,
+		"enable.idempotence": true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create producer: %v", err)
+		return nil, fmt.Errorf("failed to create producer: %w", err)
 	}
 	return p, nil
 }
 
-func ProduceOrder(ctx context.Context, producer *kafka.Producer, order OrderEvent) error {
+func ProduceOrder(ctx context.Context, producer *kafka.Producer, topic string, order OrderEvent) error {
 	message, err := json.Marshal(order)
 	if err != nil {
-		return fmt.Errorf("failed to marshal order: %v", err)
+		return fmt.Errorf("failed to marshal order: %w", err)
 	}
 
-	topic := ctx.Value("topic").(string)
+	deliveryChan := make(chan kafka.Event)
+	defer close(deliveryChan)
+
 	err = producer.Produce(&kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
 		Value:          message,
-	}, nil)
+	}, deliveryChan)
+
 	if err != nil {
-		return fmt.Errorf("failed to produce message: %v", err)
+		return fmt.Errorf("failed to produce message: %w", err)
 	}
 
 	select {
-	case ev := <-producer.Events():
-		switch e := ev.(type) {
-		case *kafka.Message:
-			if e.TopicPartition.Error != nil {
-				return fmt.Errorf("delivery failed: %v", e.TopicPartition.Error)
-			}
-			fmt.Printf("Produce order: %s\n", string(message))
-
-		case kafka.Error:
-			return fmt.Errorf("producer error: %v", e)
-		}
 	case <-ctx.Done():
 		return ctx.Err()
+	case ev := <-deliveryChan:
+		m := ev.(*kafka.Message)
+		if m.TopicPartition.Error != nil {
+			return fmt.Errorf("delivery failed: %w", m.TopicPartition.Error)
+		}
+		slog.InfoContext(ctx, "Mensagem enviada com sucesso", "partition", m.TopicPartition.Partition, "offset", m.TopicPartition.Offset)
 	}
 
 	return nil
 }
 
 func NewConsumer(ctx context.Context, cfg Config) (*kafka.Consumer, error) {
-	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":  cfg.GetBrokers(),
 		"group.id":           cfg.GroupID,
 		"auto.offset.reset":  "earliest",
-		"enable.auto.commit": true,
-	})
+		"enable.auto.commit": true})
 	if err != nil {
-		slog.ErrorContext(ctx, fmt.Sprintf("cannot create consumer: %v", err))
+		return nil, fmt.Errorf("cannot create consumer: %w", err)
 	}
 
-	err = consumer.SubscribeTopics([]string{cfg.Topic}, nil)
+	err = c.SubscribeTopics([]string{cfg.Topic}, nil)
 	if err != nil {
-		consumer.Close()
-		return nil, fmt.Errorf("failed to subscribe topic %s: %v", cfg.Topic, err)
+		c.Close()
+		return nil, fmt.Errorf("failed to subscribe topic %s: %w", cfg.Topic, err)
 	}
 
-	return consumer, nil
+	return c, nil
 }
 
 func ConsumeOrders(ctx context.Context, consumer *kafka.Consumer) error {
-	slog.InfoContext(ctx, "Consuming orders")
+	slog.InfoContext(ctx, "Iniciando loop de consumo de ordens")
 
 	for {
 		select {
 		case <-ctx.Done():
+			slog.InfoContext(ctx, "Parando consumo (contexto cancelado)")
 			return ctx.Err()
 		default:
-			msg, err := consumer.ReadMessage(2 * time.Second)
+			msg, err := consumer.ReadMessage(1 * time.Second)
 			if err != nil {
-				if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+				if kerr, ok := err.(kafka.Error); ok && kerr.Code() == kafka.ErrTimedOut {
 					continue
 				}
-				return fmt.Errorf("error reading message: %v", err)
+				slog.ErrorContext(ctx, "Erro ao ler mensagem", "error", err)
+				continue
 			}
 
 			var order OrderEvent
 			if err := json.Unmarshal(msg.Value, &order); err != nil {
-				return fmt.Errorf("error unmarshaling message: %v", err)
+				slog.WarnContext(ctx, "Mensagem inválida ignorada", "error", err)
+				continue
 			}
 
-			log.Printf("Consumed order: %+v\n", order)
+			slog.InfoContext(ctx, "Ordem consumida", "order_id", order.OrderID)
 		}
 	}
 }
@@ -134,15 +138,11 @@ func EnsureTopic(ctx context.Context, cfg Config) error {
 		"bootstrap.servers": cfg.GetBrokers(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create admin client: %v", err)
+		return fmt.Errorf("failed to create admin client: %w", err)
 	}
 	defer admin.Close()
 
-	metadata, err := admin.GetMetadata(&cfg.Topic, false, 5000)
-	if err == nil && len(metadata.Topics) > 0 && len(metadata.Topics[cfg.Topic].Partitions) > 0 {
-		slog.Log(ctx, slog.LevelDebug, "topic %s already exists", cfg.Topic, nil)
-		return nil
-	}
+	maxDur := 30 * time.Second
 
 	topicSpec := []kafka.TopicSpecification{
 		{
@@ -151,22 +151,18 @@ func EnsureTopic(ctx context.Context, cfg Config) error {
 			ReplicationFactor: cfg.ReplicationFactor,
 		},
 	}
-	maxDur, err := time.ParseDuration("60s")
-	if err != nil {
-		panic("ParseDuration(60s)")
-	}
+
 	results, err := admin.CreateTopics(ctx, topicSpec, kafka.SetAdminOperationTimeout(maxDur))
 	if err != nil {
-		slog.Log(ctx, slog.LevelError, "failed to create topic %s: %v", cfg.Topic, err)
-		return err
+		return fmt.Errorf("failed to create topic: %w", err)
 	}
 
-	for i, result := range results {
+	for _, result := range results {
 		if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
-			slog.WarnContext(ctx, "%s: %s ", strconv.Itoa(i), result.Topic, result.Error.String(), nil)
+			return fmt.Errorf("topic creation error for %s: %v", result.Topic, result.Error)
 		}
 	}
 
-	slog.Debug("")
 	return nil
 }
+
