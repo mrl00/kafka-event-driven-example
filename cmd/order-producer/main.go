@@ -17,7 +17,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	kcfg := kafka.Config{
+	kcfg := kafka.KafkaConfig{
 		Brokers:           cfg.Brokers,
 		Topic:             cfg.Topic,
 		NumOfPartitions:   cfg.NumOfPartitions,
