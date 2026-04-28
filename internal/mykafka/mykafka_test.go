@@ -1,4 +1,4 @@
-package kafka
+package mykafka
 
 import (
 	"context"
@@ -69,4 +69,3 @@ func TestProduceOrder_ContextCancellation(t *testing.T) {
 		t.Error("esperava erro por contexto cancelado, recebeu nil")
 	}
 }
-

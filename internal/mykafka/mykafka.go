@@ -1,4 +1,4 @@
-package kafka
+package mykafka
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	ckafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/retry"
 )
 
@@ -61,13 +61,13 @@ type OrderEvent struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func NewProducer(cfg KafkaConfig) (*kafka.Producer, error) {
-	var p *kafka.Producer
+func NewProducer(cfg KafkaConfig) (*ckafka.Producer, error) {
+	var p *ckafka.Producer
 	retryCfg := retry.DefaultConfig()
 
 	err := retry.Do(context.Background(), retryCfg, func(ctx context.Context) error {
 		var err error
-		p, err = kafka.NewProducer(&kafka.ConfigMap{
+		p, err = ckafka.NewProducer(&ckafka.ConfigMap{
 			"bootstrap.servers":  cfg.GetBrokers(),
 			"acks":               "all",
 			"retries":            5,
@@ -83,7 +83,7 @@ func NewProducer(cfg KafkaConfig) (*kafka.Producer, error) {
 	return p, err
 }
 
-func ProduceOrder(ctx context.Context, producer *kafka.Producer, topic string, order OrderEvent) error {
+func ProduceOrder(ctx context.Context, producer *ckafka.Producer, topic string, order OrderEvent) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -97,11 +97,11 @@ func ProduceOrder(ctx context.Context, producer *kafka.Producer, topic string, o
 	retryCfg.MaxRetries = 3
 
 	return retry.Do(ctx, retryCfg, func(c context.Context) error {
-		deliveryChan := make(chan kafka.Event)
+		deliveryChan := make(chan ckafka.Event)
 		defer close(deliveryChan)
 
-		err = producer.Produce(&kafka.Message{
-			TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		err = producer.Produce(&ckafka.Message{
+			TopicPartition: ckafka.TopicPartition{Topic: &topic, Partition: ckafka.PartitionAny},
 			Value:          message,
 		}, deliveryChan)
 
@@ -113,7 +113,7 @@ func ProduceOrder(ctx context.Context, producer *kafka.Producer, topic string, o
 		case <-c.Done():
 			return c.Err()
 		case ev := <-deliveryChan:
-			m := ev.(*kafka.Message)
+			m := ev.(*ckafka.Message)
 			if m.TopicPartition.Error != nil {
 				// Se for um erro de "Leader Not Available", o retry vai ajudar!
 				return wrapRetryable(fmt.Errorf("delivery failed: %w", m.TopicPartition.Error))
@@ -126,13 +126,13 @@ func ProduceOrder(ctx context.Context, producer *kafka.Producer, topic string, o
 	})
 }
 
-func NewConsumer(ctx context.Context, cfg KafkaConfig) (*kafka.Consumer, error) {
-	var c *kafka.Consumer
+func NewConsumer(ctx context.Context, cfg KafkaConfig) (*ckafka.Consumer, error) {
+	var c *ckafka.Consumer
 	retryCfg := retry.DefaultConfig()
 
 	err := retry.Do(ctx, retryCfg, func(ctx context.Context) error {
 		var err error
-		c, err = kafka.NewConsumer(&kafka.ConfigMap{
+		c, err = ckafka.NewConsumer(&ckafka.ConfigMap{
 			"bootstrap.servers":  cfg.GetBrokers(),
 			"group.id":           cfg.GroupID,
 			"auto.offset.reset":  "earliest",
@@ -153,31 +153,39 @@ func NewConsumer(ctx context.Context, cfg KafkaConfig) (*kafka.Consumer, error) 
 	return c, err
 }
 
-func ConsumeOrders(ctx context.Context, consumer *kafka.Consumer) error {
+func ConsumeOrders(ctx context.Context, consumer *ckafka.Consumer, dlq *DLQProducer) error {
 	slog.InfoContext(ctx, "Iniciando loop de consumo de ordens")
 
 	for {
 		select {
 		case <-ctx.Done():
-			slog.InfoContext(ctx, "Parando consumo (contexto cancelado)")
+			slog.InfoContext(ctx, "Stopping consumption (context cancelled)")
 			return ctx.Err()
 		default:
 			msg, err := consumer.ReadMessage(1 * time.Second)
 			if err != nil {
-				if kerr, ok := err.(kafka.Error); ok && kerr.Code() == kafka.ErrTimedOut {
+				if kerr, ok := err.(ckafka.Error); ok && kerr.Code() == ckafka.ErrTimedOut {
 					continue
 				}
-				slog.ErrorContext(ctx, "Erro ao ler mensagem", "error", err)
+				slog.ErrorContext(ctx, "Cannot read message", "error", err)
 				continue
 			}
 
 			var order OrderEvent
 			if err := json.Unmarshal(msg.Value, &order); err != nil {
-				slog.WarnContext(ctx, "Mensagem inválida ignorada", "error", err)
+				slog.WarnContext(ctx, "Invalid Message. Sending to DLQ", "error", err)
+				_ = dlq.Send(ctx, msg, "error", "deserialization")
 				continue
 			}
 
-			slog.InfoContext(ctx, "Ordem consumida", "order_id", order.OrderID)
+			if order.Amount <= 0 {
+				errMsg := "order amount must be greater than zero"
+				slog.WarnContext(ctx, "Validation Error. Sending to DLQ", "order_id", order.OrderID)
+				_ = dlq.Send(ctx, msg, errMsg, "validation")
+				continue
+			}
+
+			slog.InfoContext(ctx, "Order consumed", "order_id", order.OrderID)
 		}
 	}
 }
@@ -187,7 +195,7 @@ func EnsureTopic(ctx context.Context, cfg KafkaConfig) error {
 
 	return retry.Do(ctx, retryCfg, func(ctx context.Context) error {
 
-		admin, err := kafka.NewAdminClient(&kafka.ConfigMap{
+		admin, err := ckafka.NewAdminClient(&ckafka.ConfigMap{
 			"bootstrap.servers": cfg.GetBrokers(),
 		})
 		if err != nil {
@@ -197,21 +205,26 @@ func EnsureTopic(ctx context.Context, cfg KafkaConfig) error {
 
 		maxDur := 30 * time.Second
 
-		topicSpec := []kafka.TopicSpecification{
+		topicSpec := []ckafka.TopicSpecification{
 			{
 				Topic:             cfg.Topic,
 				NumPartitions:     cfg.NumOfPartitions,
 				ReplicationFactor: cfg.ReplicationFactor,
 			},
+			{
+				Topic:             cfg.Topic + ".dlq",
+				NumPartitions:     1,
+				ReplicationFactor: cfg.ReplicationFactor,
+			},
 		}
 
-		results, err := admin.CreateTopics(ctx, topicSpec, kafka.SetAdminOperationTimeout(maxDur))
+		results, err := admin.CreateTopics(ctx, topicSpec, ckafka.SetAdminOperationTimeout(maxDur))
 		if err != nil {
 			return fmt.Errorf("failed to create topic: %w", err)
 		}
 
 		for _, result := range results {
-			if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
+			if result.Error.Code() != ckafka.ErrNoError && result.Error.Code() != ckafka.ErrTopicAlreadyExists {
 				return fmt.Errorf("topic creation error for %s: %v", result.Topic, result.Error)
 			}
 		}
