@@ -1,4 +1,4 @@
-package mykafka
+package kafka
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type DLQProducer struct {
 	topic    string
 }
 
-func NewDLQProducer(cfg KafkaConfig) (*DLQProducer, error) {
+func NewDLQProducer(cfg Config) (*DLQProducer, error) {
 	p, err := NewProducer(cfg)
 	if err != nil {
 		return nil, err

@@ -1,4 +1,4 @@
-package mykafka
+package kafka
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func wrapRetryable(err error) error {
 	return kafkaError{err: err, retryable: true}
 }
 
-type KafkaConfig struct {
+type Config struct {
 	Brokers           []string
 	Topic             string
 	GroupID           string
@@ -40,7 +40,7 @@ type KafkaConfig struct {
 	ReplicationFactor int
 }
 
-func (c KafkaConfig) GetBrokers() string {
+func (c Config) GetBrokers() string {
 	if len(c.Brokers) == 0 {
 		return ""
 	}
@@ -61,7 +61,7 @@ type OrderEvent struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func NewProducer(cfg KafkaConfig) (*ckafka.Producer, error) {
+func NewProducer(cfg Config) (*ckafka.Producer, error) {
 	var p *ckafka.Producer
 	retryCfg := retry.DefaultConfig()
 
@@ -126,7 +126,7 @@ func ProduceOrder(ctx context.Context, producer *ckafka.Producer, topic string, 
 	})
 }
 
-func NewConsumer(ctx context.Context, cfg KafkaConfig) (*ckafka.Consumer, error) {
+func NewConsumer(ctx context.Context, cfg Config) (*ckafka.Consumer, error) {
 	var c *ckafka.Consumer
 	retryCfg := retry.DefaultConfig()
 
@@ -190,7 +190,7 @@ func ConsumeOrders(ctx context.Context, consumer *ckafka.Consumer, dlq *DLQProdu
 	}
 }
 
-func EnsureTopic(ctx context.Context, cfg KafkaConfig) error {
+func EnsureTopic(ctx context.Context, cfg Config) error {
 	retryCfg := retry.DefaultConfig()
 
 	return retry.Do(ctx, retryCfg, func(ctx context.Context) error {

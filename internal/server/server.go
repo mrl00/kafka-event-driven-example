@@ -8,20 +8,30 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/router"
 )
 
-func StartServer(name string, port string) *http.Server {
+type Config struct {
+	Name              string
+	Port              string
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ReadHeaderTimeout time.Duration
+}
+
+func StartServer(cfg Config) *http.Server {
 	srv := &http.Server{
-		Addr:              ":" + port,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       15 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
+		Addr:              ":" + cfg.Port,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		MaxHeaderBytes:    1 << 20, // 1MB
 		Handler:           router.New(),
 	}
 
 	go func() {
-		slog.Info("Started "+name+" server", "port", port)
+		slog.Info("Started "+cfg.Name+" server", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Failed to start "+name+" server", "err", err)
+			slog.Error("Failed to start "+cfg.Name+" server", "err", err)
 		}
 	}()
 

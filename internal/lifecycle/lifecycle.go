@@ -9,20 +9,14 @@ import (
 	"time"
 )
 
-func WaitForShutdownSignal(ctx context.Context, cancel context.CancelFunc, cleanups ...func()) {
+func WaitForShutdownSignal(ctx context.Context, cancel context.CancelFunc, shutdownTimeout time.Duration, cleanups ...func()) {
 	sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	<-sigCtx.Done()
-	slog.Info("Shutting down...")
+	slog.Info("Shutdown signal received, starting graceful shutdown...", "timeout", shutdownTimeout)
 
 	cancel()
-
-	timeoutStr := os.Getenv("SHUTDOWN_TIMEOUT")
-	timeout, err := time.ParseDuration(timeoutStr)
-	if err != nil {
-		timeout = 5 * time.Second
-	}
 
 	done := make(chan struct{})
 	go func() {
@@ -35,7 +29,7 @@ func WaitForShutdownSignal(ctx context.Context, cancel context.CancelFunc, clean
 	select {
 	case <-done:
 		slog.Info("Shutdown complete")
-	case <-time.After(timeout):
-		slog.Info("Shutdown timed out")
+	case <-time.After(shutdownTimeout):
+		slog.Warn("Shutdown timed out, forcing exit", "timeout", shutdownTimeout)
 	}
 }

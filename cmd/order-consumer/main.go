@@ -5,38 +5,45 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mrl00/kafka-event-driven-example/internal/config"
+	"github.com/mrl00/kafka-event-driven-example/internal/appconfig"
+	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/lifecycle"
-	"github.com/mrl00/kafka-event-driven-example/internal/mykafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/server"
 )
 
 func main() {
-	cfg := config.LoadConfig(true)
+	cfg := appconfig.LoadConsumerConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	kcfg := mykafka.KafkaConfig{
+	kcfg := kafka.Config{
 		Brokers: cfg.Brokers,
 		Topic:   cfg.Topic,
 		GroupID: cfg.GroupID,
 	}
 
-	if err := mykafka.EnsureTopic(ctx, kcfg); err != nil {
+	if err := kafka.EnsureTopic(ctx, kcfg); err != nil {
 		slog.Error("erro ao assegurar tópico", "error", err)
 		return
 	}
 
-	consumer, err := mykafka.NewConsumer(ctx, kcfg)
+	consumer, err := kafka.NewConsumer(ctx, kcfg)
 	if err != nil {
 		slog.Error("falha ao criar consumer", "error", err)
 		return
 	}
 	slog.Info("Consumer Kafka criado com sucesso")
 
-	srv := server.StartServer("consumer", cfg.HTTPPort)
+	srv := server.StartServer(server.Config{
+		Name:              "consumer",
+		Port:              cfg.HTTPPort,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+	})
 
-	dlq, err := mykafka.NewDLQProducer(kcfg)
+	dlq, err := kafka.NewDLQProducer(kcfg)
 	if err != nil {
 		slog.Error("falha ao criar DLQ producer", "error", err)
 		return
@@ -44,7 +51,7 @@ func main() {
 
 	go func() {
 		slog.Info("Iniciando consumo de ordens...")
-		if err := mykafka.ConsumeOrders(ctx, consumer, dlq); err != nil {
+		if err := kafka.ConsumeOrders(ctx, consumer, dlq); err != nil {
 			slog.Error("erro durante o consumo de ordens", "error", err)
 		}
 	}()
@@ -70,5 +77,5 @@ func main() {
 		},
 	}
 
-	lifecycle.WaitForShutdownSignal(ctx, cancel, cleanups...)
+	lifecycle.WaitForShutdownSignal(ctx, cancel, cfg.ShutdownTimeout, cleanups...)
 }

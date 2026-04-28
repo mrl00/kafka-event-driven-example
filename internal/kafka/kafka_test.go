@@ -1,4 +1,4 @@
-package mykafka
+package kafka
 
 import (
 	"context"
@@ -46,7 +46,7 @@ func TestKafkaConfig_GetBrokers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := KafkaConfig{Brokers: tt.brokers}
+			cfg := Config{Brokers: tt.brokers}
 			if got := cfg.GetBrokers(); got != tt.expected {
 				t.Errorf("GetBrokers() = %v, esperava %v", got, tt.expected)
 			}

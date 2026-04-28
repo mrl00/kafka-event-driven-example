@@ -1,11 +1,11 @@
-package mykafka
+package kafka
 
 import (
 	"testing"
 )
 
 func TestDLQTopicNaming(t *testing.T) {
-	cfg := KafkaConfig{Topic: "orders"}
+	cfg := Config{Topic: "orders"}
 	dlq, _ := NewDLQProducer(cfg)
 	// O fechamento do producer aqui falharia pois não há broker real,
 	// mas testamos apenas a lógica do nome do tópico

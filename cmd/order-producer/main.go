@@ -5,40 +5,47 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mrl00/kafka-event-driven-example/internal/config"
+	"github.com/mrl00/kafka-event-driven-example/internal/appconfig"
+	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/lifecycle"
-	"github.com/mrl00/kafka-event-driven-example/internal/mykafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/server"
 )
 
 func main() {
 
-	cfg := config.LoadConfig(false)
+	cfg := appconfig.LoadProducerConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	kcfg := mykafka.KafkaConfig{
+	kcfg := kafka.Config{
 		Brokers:           cfg.Brokers,
 		Topic:             cfg.Topic,
 		NumOfPartitions:   cfg.NumOfPartitions,
 		ReplicationFactor: cfg.ReplicationFactor,
 	}
 
-	if err := mykafka.EnsureTopic(ctx, kcfg); err != nil {
+	if err := kafka.EnsureTopic(ctx, kcfg); err != nil {
 		slog.Error("erro ao assegurar tópico", "error", err)
 		return
 	}
 
-	producer, err := mykafka.NewProducer(kcfg)
+	producer, err := kafka.NewProducer(kcfg)
 	if err != nil {
 		slog.Error("falha ao criar producer", "error", err)
 		return
 	}
 
-	srv := server.StartServer("producer", cfg.HTTPPort)
+	srv := server.StartServer(server.Config{
+		Name:              "producer",
+		Port:              cfg.HTTPPort,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+	})
 
 	go func() {
-		orders := []mykafka.OrderEvent{
+		orders := []kafka.OrderEvent{
 			{OrderID: "ORD001", CustomerID: "CUST001", Amount: 199.99},
 			{OrderID: "ORD002", CustomerID: "CUST002", Amount: 299.99},
 			{OrderID: "ORD003", CustomerID: "CUST003", Amount: 149.50},
@@ -66,7 +73,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			default:
-				if err := mykafka.ProduceOrder(ctx, producer, cfg.Topic, orderEvent); err != nil {
+				if err := kafka.ProduceOrder(ctx, producer, cfg.Topic, orderEvent); err != nil {
 					slog.Error("falha ao produzir ordem", "order_id", orderEvent.OrderID, "error", err)
 				}
 				time.Sleep(1 * time.Second)
@@ -90,5 +97,5 @@ func main() {
 		},
 	}
 
-	lifecycle.WaitForShutdownSignal(ctx, cancel, cleanups...)
+	lifecycle.WaitForShutdownSignal(ctx, cancel, cfg.ShutdownTimeout, cleanups...)
 }
