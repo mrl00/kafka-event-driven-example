@@ -26,6 +26,7 @@ O projeto implementa uma arquitetura de microsserviços com foco em robustez:
 - **Segurança de Dados**: Produtor configurado com `acks=all` e `enable.idempotence=true`.
 - **Logs Estruturados**: Uso de `slog` com propagação de contexto para melhor rastreabilidade.
 - **Health Checks**: Endpoints HTTP para monitoramento de integridade e prontidão.
+- **Retry Pattern**: Implementação de Exponential Backoff com Jitter para todas as operações críticas do Kafka (conexão, criação de tópicos e produção de mensagens).
 
 ## 🚀 Início Rápido
 
@@ -62,6 +63,7 @@ kafka-event-driven-example/
 ├── internal/
 │   ├── kafka/              # Implementação resiliente do cliente Kafka
 │   ├── lifecycle/          # Gerenciador de sinais e encerramento (Shutdown)
+│   ├── retry/              # Motor genérico de retry com backoff exponencial
 │   ├── server/             # Fábrica de servidores HTTP controlados
 │   ├── handler/            # Handlers HTTP
 │   └── router/             # Roteamento centralizado
@@ -73,7 +75,7 @@ kafka-event-driven-example/
 Ao receber um sinal de paragem, o pacote `lifecycle` executa as tarefas de limpeza em ordem reversa (**LIFO**):
 
 1. **HTTP Server**: Encerra o servidor via `srv.Shutdown(ctx)`, interrompendo a aceitação de novas conexões.
-2. **Kafka Client**: 
+2. **Kafka Client**:
    - **Producer**: Executa `producer.Flush(timeout)` para enviar mensagens pendentes antes de fechar.
    - **Consumer**: Executa `consumer.Close()`, notificando o cluster para rebalanceamento imediato.
 3. **Contexto**: Cancela o `context.Context` global, sinalizando a paragem imediata de goroutines.
@@ -89,4 +91,6 @@ go test ./...
 ## 📝 Licença
 
 Este projeto está licenciado sob a MIT License.
+
 ```
+

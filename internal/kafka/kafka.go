@@ -9,9 +9,30 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/mrl00/kafka-event-driven-example/internal/retry"
 )
 
-type Config struct {
+type kafkaError struct {
+	err       error
+	retryable bool
+}
+
+func (e kafkaError) Error() string {
+	return e.err.Error()
+}
+
+func (e kafkaError) Retryable() bool {
+	return e.retryable
+}
+
+func wrapRetryable(err error) error {
+	if err == nil {
+		return nil
+	}
+	return kafkaError{err: err, retryable: true}
+}
+
+type KafkaConfig struct {
 	Brokers           []string
 	Topic             string
 	GroupID           string
@@ -19,7 +40,7 @@ type Config struct {
 	ReplicationFactor int
 }
 
-func (c Config) GetBrokers() string {
+func (c KafkaConfig) GetBrokers() string {
 	if len(c.Brokers) == 0 {
 		return ""
 	}
@@ -40,68 +61,96 @@ type OrderEvent struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func NewProducer(cfg Config) (*kafka.Producer, error) {
-	p, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers":  cfg.GetBrokers(),
-		"acks":               "all",
-		"retries":            5,
-		"enable.idempotence": true,
+func NewProducer(cfg KafkaConfig) (*kafka.Producer, error) {
+	var p *kafka.Producer
+	retryCfg := retry.DefaultConfig()
+
+	err := retry.Do(context.Background(), retryCfg, func(ctx context.Context) error {
+		var err error
+		p, err = kafka.NewProducer(&kafka.ConfigMap{
+			"bootstrap.servers":  cfg.GetBrokers(),
+			"acks":               "all",
+			"retries":            5,
+			"enable.idempotence": true,
+		})
+
+		if err != nil {
+			return wrapRetryable(fmt.Errorf("failed to create producer: %w", err))
+		}
+		return nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create producer: %w", err)
-	}
-	return p, nil
+
+	return p, err
 }
 
 func ProduceOrder(ctx context.Context, producer *kafka.Producer, topic string, order OrderEvent) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	message, err := json.Marshal(order)
 	if err != nil {
 		return fmt.Errorf("failed to marshal order: %w", err)
 	}
 
-	deliveryChan := make(chan kafka.Event)
-	defer close(deliveryChan)
+	retryCfg := retry.DefaultConfig()
+	retryCfg.MaxRetries = 3
 
-	err = producer.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-		Value:          message,
-	}, deliveryChan)
+	return retry.Do(ctx, retryCfg, func(c context.Context) error {
+		deliveryChan := make(chan kafka.Event)
+		defer close(deliveryChan)
 
-	if err != nil {
-		return fmt.Errorf("failed to produce message: %w", err)
-	}
+		err = producer.Produce(&kafka.Message{
+			TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+			Value:          message,
+		}, deliveryChan)
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case ev := <-deliveryChan:
-		m := ev.(*kafka.Message)
-		if m.TopicPartition.Error != nil {
-			return fmt.Errorf("delivery failed: %w", m.TopicPartition.Error)
+		if err != nil {
+			return wrapRetryable(fmt.Errorf("failed to produce message: %w", err))
 		}
-		slog.InfoContext(ctx, "Mensagem enviada com sucesso", "partition", m.TopicPartition.Partition, "offset", m.TopicPartition.Offset)
-	}
 
-	return nil
+		select {
+		case <-c.Done():
+			return c.Err()
+		case ev := <-deliveryChan:
+			m := ev.(*kafka.Message)
+			if m.TopicPartition.Error != nil {
+				// Se for um erro de "Leader Not Available", o retry vai ajudar!
+				return wrapRetryable(fmt.Errorf("delivery failed: %w", m.TopicPartition.Error))
+			}
+			slog.InfoContext(c, "Mensagem enviada com sucesso",
+				"partition", m.TopicPartition.Partition,
+				"offset", m.TopicPartition.Offset)
+			return nil
+		}
+	})
 }
 
-func NewConsumer(ctx context.Context, cfg Config) (*kafka.Consumer, error) {
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers":  cfg.GetBrokers(),
-		"group.id":           cfg.GroupID,
-		"auto.offset.reset":  "earliest",
-		"enable.auto.commit": true})
-	if err != nil {
-		return nil, fmt.Errorf("cannot create consumer: %w", err)
-	}
+func NewConsumer(ctx context.Context, cfg KafkaConfig) (*kafka.Consumer, error) {
+	var c *kafka.Consumer
+	retryCfg := retry.DefaultConfig()
 
-	err = c.SubscribeTopics([]string{cfg.Topic}, nil)
-	if err != nil {
-		c.Close()
-		return nil, fmt.Errorf("failed to subscribe topic %s: %w", cfg.Topic, err)
-	}
+	err := retry.Do(ctx, retryCfg, func(ctx context.Context) error {
+		var err error
+		c, err = kafka.NewConsumer(&kafka.ConfigMap{
+			"bootstrap.servers":  cfg.GetBrokers(),
+			"group.id":           cfg.GroupID,
+			"auto.offset.reset":  "earliest",
+			"enable.auto.commit": true})
+		if err != nil {
+			return wrapRetryable(fmt.Errorf("cannot create consumer: %w", err))
+		}
 
-	return c, nil
+		err = c.SubscribeTopics([]string{cfg.Topic}, nil)
+		if err != nil {
+			c.Close()
+			return wrapRetryable(fmt.Errorf("failed to subscribe topic %s: %w", cfg.Topic, err))
+		}
+
+		return nil
+	})
+
+	return c, err
 }
 
 func ConsumeOrders(ctx context.Context, consumer *kafka.Consumer) error {
@@ -133,36 +182,40 @@ func ConsumeOrders(ctx context.Context, consumer *kafka.Consumer) error {
 	}
 }
 
-func EnsureTopic(ctx context.Context, cfg Config) error {
-	admin, err := kafka.NewAdminClient(&kafka.ConfigMap{
-		"bootstrap.servers": cfg.GetBrokers(),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create admin client: %w", err)
-	}
-	defer admin.Close()
+func EnsureTopic(ctx context.Context, cfg KafkaConfig) error {
+	retryCfg := retry.DefaultConfig()
 
-	maxDur := 30 * time.Second
+	return retry.Do(ctx, retryCfg, func(ctx context.Context) error {
 
-	topicSpec := []kafka.TopicSpecification{
-		{
-			Topic:             cfg.Topic,
-			NumPartitions:     cfg.NumOfPartitions,
-			ReplicationFactor: cfg.ReplicationFactor,
-		},
-	}
-
-	results, err := admin.CreateTopics(ctx, topicSpec, kafka.SetAdminOperationTimeout(maxDur))
-	if err != nil {
-		return fmt.Errorf("failed to create topic: %w", err)
-	}
-
-	for _, result := range results {
-		if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
-			return fmt.Errorf("topic creation error for %s: %v", result.Topic, result.Error)
+		admin, err := kafka.NewAdminClient(&kafka.ConfigMap{
+			"bootstrap.servers": cfg.GetBrokers(),
+		})
+		if err != nil {
+			return wrapRetryable(fmt.Errorf("failed to create admin client: %w", err))
 		}
-	}
+		defer admin.Close()
 
-	return nil
+		maxDur := 30 * time.Second
+
+		topicSpec := []kafka.TopicSpecification{
+			{
+				Topic:             cfg.Topic,
+				NumPartitions:     cfg.NumOfPartitions,
+				ReplicationFactor: cfg.ReplicationFactor,
+			},
+		}
+
+		results, err := admin.CreateTopics(ctx, topicSpec, kafka.SetAdminOperationTimeout(maxDur))
+		if err != nil {
+			return fmt.Errorf("failed to create topic: %w", err)
+		}
+
+		for _, result := range results {
+			if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
+				return fmt.Errorf("topic creation error for %s: %v", result.Topic, result.Error)
+			}
+		}
+
+		return nil
+	})
 }
-
