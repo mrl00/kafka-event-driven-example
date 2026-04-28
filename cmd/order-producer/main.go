@@ -63,7 +63,7 @@ func main() {
 
 		for _, orderEvent := range orders {
 			select {
-			case <-ctx.Done(): // Para o loop se o shutdown começar
+			case <-ctx.Done():
 				return
 			default:
 				if err := kafka.ProduceOrder(ctx, producer, cfg.Topic, orderEvent); err != nil {
@@ -74,11 +74,9 @@ func main() {
 		}
 	}()
 
-	// Lista de funções de limpeza (Cleanups)
 	cleanups := []func(){
 		func() {
 			slog.Info("Encerrando servidor HTTP...")
-			// Contexto de timeout específico para o shutdown do server
 			sdCtx, sdCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer sdCancel()
 			if err := srv.Shutdown(sdCtx); err != nil {
@@ -87,12 +85,10 @@ func main() {
 		},
 		func() {
 			slog.Info("Limpando buffers e fechando producer Kafka...")
-			// Flush garante que mensagens no buffer local sejam enviadas
-			producer.Flush(15 * 1000) // 15 segundos em ms
+			producer.Flush(15 * 1000)
 			producer.Close()
 		},
 	}
 
-	// Aguarda o sinal de encerramento
 	lifecycle.WaitForShutdownSignal(ctx, cancel, cleanups...)
 }
