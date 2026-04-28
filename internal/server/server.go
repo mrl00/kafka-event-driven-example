@@ -10,11 +10,12 @@ import (
 
 func StartServer(name string, port string) *http.Server {
 	srv := &http.Server{
-		Addr:         ":" + port,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  15 * time.Second,
-		Handler:      router.New(),
+		Addr:              ":" + port,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler:           router.New(),
 	}
 
 	go func() {
