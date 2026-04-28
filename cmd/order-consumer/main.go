@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrl00/kafka-event-driven-example/internal/config"
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
+	"github.com/mrl00/kafka-event-driven-example/internal/lifecycle"
 	"github.com/mrl00/kafka-event-driven-example/internal/server"
 )
 
@@ -70,5 +71,5 @@ func main() {
 	}
 
 	// Aguarda sinais SIGINT/SIGTERM e gerencia o encerramento
-	lifecycle.WaitForShutdown(ctx, cancel, cleanups...)
+	lifecycle.WaitForShutdownSignal(ctx, cancel, cleanups...)
 }
