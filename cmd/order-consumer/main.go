@@ -2,44 +2,83 @@ package main
 
 import (
 	"context"
-	"log"
 	"log/slog"
-	"net/http"
+	"time"
 
-	"github.com/mrl00/kafka-event-driven-example/internal/config"
+	"github.com/mrl00/kafka-event-driven-example/internal/appconfig"
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
+	"github.com/mrl00/kafka-event-driven-example/internal/lifecycle"
 	"github.com/mrl00/kafka-event-driven-example/internal/router"
+	"github.com/mrl00/kafka-event-driven-example/internal/server"
 )
 
-func server(port string) {
-	r := router.New()
-	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatal("failed to start server: ", err)
-	}
-}
-
 func main() {
-	cfg := config.LoadConfig(true)
-	go server(cfg.HTTPPort)
+	cfg := appconfig.LoadConsumerConfig()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+
 	kcfg := kafka.Config{
 		Brokers: cfg.Brokers,
 		Topic:   cfg.Topic,
 		GroupID: cfg.GroupID,
 	}
+
 	if err := kafka.EnsureTopic(ctx, kcfg); err != nil {
-		log.Fatalf("ensure topic error: %v", err)
+		slog.Error("erro ao assegurar tópico", "error", err)
+		return
 	}
 
 	consumer, err := kafka.NewConsumer(ctx, kcfg)
 	if err != nil {
-		log.Fatalf("%v", err)
+		slog.Error("falha ao criar consumer", "error", err)
+		return
 	}
-	defer consumer.Close()
-	slog.InfoContext(ctx, "consumer created")
+	slog.Info("Consumer Kafka criado com sucesso")
 
-	if err := kafka.ConsumeOrders(ctx, consumer); err != nil {
-		log.Fatalf("Failed to consume orders: %v", err)
+	r := router.ConsumerRouter()
+
+	srv := server.StartServer(server.Config{
+		Name:              "consumer",
+		Port:              cfg.HTTPPort,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+	}, r)
+
+	dlq, err := kafka.NewDLQProducer(kcfg)
+	if err != nil {
+		slog.Error("falha ao criar DLQ producer", "error", err)
+		return
 	}
+
+	go func() {
+		slog.Info("Iniciando consumo de ordens...")
+		if err := kafka.ConsumeOrders(ctx, consumer, dlq); err != nil {
+			slog.Error("erro durante o consumo de ordens", "error", err)
+		}
+	}()
+
+	cleanups := []func(){
+		func() {
+			slog.Info("Encerrando servidor HTTP...")
+			sdCtx, sdCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer sdCancel()
+			if err := srv.Shutdown(sdCtx); err != nil {
+				slog.Error("erro ao desligar servidor", "error", err)
+			}
+		},
+		func() {
+			slog.Info("Fechando conexão com Kafka Consumer...")
+			if err := consumer.Close(); err != nil {
+				slog.Error("erro ao fechar consumer", "error", err)
+			}
+		},
+		func() {
+			slog.Info("Fechando DLQ Producer...")
+			dlq.Close()
+		},
+	}
+
+	lifecycle.WaitForShutdownSignal(ctx, cancel, cfg.ShutdownTimeout, cleanups...)
 }

@@ -1,28 +1,30 @@
+# Kafka Event-Driven Example
+
 [![CI](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/ci.yml/badge.svg)](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/ci.yml)
 [![Check Pull Request Source](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/branch-check.yml/badge.svg)](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/branch-check.yml)
 [![Docker Publish](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/mrl00/kafka-event-driven-example/actions/workflows/docker-publish.yml)
-# Kafka Event-Driven Example
 
-A Go-based event-driven architecture example demonstrating Apache Kafka integration with order processing. This project showcases a producer-consumer pattern using a 3-node Kafka cluster with proper replication and fault tolerance.
+A production-focused, event-driven architecture example in Go demonstrating Apache Kafka integration for order processing. This project showcases resilient producer-consumer patterns using a 3-node Kafka cluster with proper replication and fault tolerance.
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Resilience
 
-This project implements a microservices architecture with the following components:
+This project implements a microservices architecture with a focus on robustness:
 
-- **Order Producer**: HTTP service that generates and publishes order events to Kafka
-- **Order Consumer**: Service that consumes order events from Kafka and processes them
-- **Kafka Cluster**: 3-node Kafka cluster with KRaft mode (no Zookeeper)
-- **AKHQ**: Web UI for Kafka cluster management and monitoring
+- **Order Producer**: HTTP service that publishes order events to Kafka. Uses **idempotent** production and asynchronous delivery confirmations via dedicated `deliveryChan` to guarantee no messages are lost or duplicated.
+- **Order Consumer**: Consumes and processes order events. Implements **Poison Pill** protection (corrupted/invalid messages are routed to a Dead Letter Queue) ensuring the service never stops due to a single bad message.
+- **Graceful Shutdown**: OS signal handling (SIGINT/SIGTERM) for clean resource teardown — Kafka buffer flush, consumer group exit, and HTTP server drain.
 
-## 📋 Features
+## 📋 Production Features
 
-- **Event-Driven Architecture**: Asynchronous communication using Kafka
-- **High Availability**: 3-node Kafka cluster with replication factor of 3
+- **Graceful Shutdown**: Centralized signal handling via `internal/lifecycle` with LIFO cleanup ordering
+- **High Availability**: 3-node Kafka cluster with replication factor 3 in KRaft mode (no Zookeeper)
+- **Data Safety**: Producer configured with `acks=all` and `enable.idempotence=true`
+- **Retry Pattern**: Generic exponential backoff with jitter for all critical Kafka operations (connection, topic creation, message production)
+- **Dead Letter Queue**: Invalid/unparseable messages are routed to a `.dlq` topic with rich metadata headers
+- **Structured Logging**: `log/slog` with context propagation for traceability
+- **HTTP Server Hardening**: Read, Write, Idle, and ReadHeader timeouts configured to prevent resource exhaustion
 - **Health Checks**: HTTP endpoints for service health monitoring
-- **Docker Support**: Complete containerization with Docker Compose
-- **Kafka Management**: Built-in AKHQ for cluster monitoring
-- **Structured Logging**: Using Go's structured logging with slog
-- **Graceful Shutdown**: Proper context handling and resource cleanup
+- **CI/CD**: GitHub Actions for build, lint, test, Docker image publish, and cosign image signing
 
 ## 🚀 Quick Start
 
@@ -33,261 +35,153 @@ This project implements a microservices architecture with the following componen
 
 ### Running with Docker Compose
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/mrl00/kafka-event-driven-example.git
-   cd kafka-event-driven-example
-   ```
+```bash
+# Start the entire stack
+docker-compose up -d
 
-2. **Start the entire stack**
-   ```bash
-   docker-compose up -d
-   ```
+# Verify services are running
+docker-compose ps
 
-3. **Verify services are running**
-   ```bash
-   docker-compose ps
-   ```
-
-4. **Check logs**
-   ```bash
-   # View all logs
-   docker-compose logs -f
-   
-   # View specific service logs
-   docker-compose logs -f order-producer
-   docker-compose logs -f order-consumer
-   ```
-
-### Service Endpoints
-
-- **Order Producer**: http://localhost:4000
-  - Health Check: http://localhost:4000/health
-- **Order Consumer**: http://localhost:4001
-  - Health Check: http://localhost:4001/health
-- **AKHQ (Kafka UI)**: http://localhost:9090
-
-### Kafka Brokers
-
-- **Kafka1**: localhost:29092
-- **Kafka2**: localhost:39092
-- **Kafka3**: localhost:49092
-
-## 🏃‍♂️ Local Development
-
-### Prerequisites
-
-- Go 1.25.1+
-- Apache Kafka (or use Docker for Kafka)
+# View logs
+docker-compose logs -f order-producer
+docker-compose logs -f order-consumer
+```
 
 ### Running Locally
 
-1. **Install dependencies**
-   ```bash
-   go mod download
-   ```
+```bash
+# Start only the Kafka cluster
+docker-compose up kafka1 kafka2 kafka3 -d
 
-2. **Start Kafka cluster** (using Docker)
-   ```bash
-   docker-compose up kafka1 kafka2 kafka3 -d
-   ```
+# Copy and edit environment
+cp .env.example .env
 
-3. **Run the producer**
-   ```bash
-   go run cmd/order-producer/main.go
-   ```
+# Run the producer
+go run ./cmd/order-producer
 
-4. **Run the consumer** (in another terminal)
-   ```bash
-   go run cmd/order-consumer/main.go
-   ```
+# Run the consumer (in another terminal)
+go run ./cmd/order-consumer
+```
+
+### Service Endpoints
+
+| Service | URL |
+| :--- | :--- |
+| Order Producer | http://localhost:4000 |
+| Producer Health Check | http://localhost:4000/health |
+| Order Consumer | http://localhost:4001 |
+| Consumer Health Check | http://localhost:4001/health |
+
+### Kafka Brokers
+
+| Broker | External Address |
+| :--- | :--- |
+| Kafka 1 | localhost:29092 |
+| Kafka 2 | localhost:39092 |
+| Kafka 3 | localhost:49092 |
+
+## 🔧 Configuration
+
+Configuration is managed via environment variables. For local development, create a `.env` file based on `.env.example`.
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `KAFKA_BROKERS` | Comma-separated Kafka broker list (required) | — |
+| `KAFKA_TOPIC` | Kafka topic for order events | `orders` |
+| `KAFKA_GROUP_ID` | Consumer group ID (consumer only) | `order-consumer-group` |
+| `KAFKA_NUM_PARTITIONS` | Number of topic partitions | `3` |
+| `KAFKA_REPLICATION_FACTOR` | Replication factor for topics | `3` |
+| `HTTP_PORT` | HTTP server port | `4000` |
+| `SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (Go duration) | `5s` |
 
 ## 📊 Project Structure
 
 ```
 kafka-event-driven-example/
 ├── cmd/
-│   ├── order-producer/          # Order producer service
-│   │   └── main.go
-│   └── order-consumer/          # Order consumer service
-│       └── main.go
-├── docker/
-│   ├── Dockerfile.producer      # Producer Docker image
-│   └── Dockerfile.consumer      # Consumer Docker image
+│   ├── order-producer/          # Order producer service entrypoint
+│   └── order-consumer/          # Order consumer service entrypoint
 ├── internal/
-│   ├── handler/                 # HTTP handlers
-│   │   ├── hc.go               # Health check handler
-│   │   └── hc_test.go          # Health check tests
-│   ├── kafka/                  # Kafka client implementation
-│   │   ├── kafka.go           # Core Kafka functionality
-│   │   └── kafka_test.go      # Kafka tests
-│   └── router/                 # HTTP router
-│       └── router.go
-├── docker-compose.yaml         # Multi-service orchestration
-├── go.mod                      # Go module definition
-├── go.sum                      # Go module checksums
-└── README.md                   # This file
+│   ├── config/                  # Environment-based configuration loader
+│   ├── handler/                 # HTTP handlers (health check)
+│   ├── lifecycle/               # Graceful shutdown manager (signal handling, LIFO cleanup)
+│   ├── mykafka/                 # Kafka client: producer, consumer, DLQ, topic management
+│   ├── retry/                   # Generic retry engine with exponential backoff and jitter
+│   ├── router/                  # HTTP routing
+│   └── server/                  # HTTP server factory with production timeouts
+├── build/
+│   ├── Dockerfile.producer      # Multi-stage Docker build for producer
+│   └── Dockerfile.consumer      # Multi-stage Docker build for consumer
+├── docs/                        # Backlogs and documentation
+├── docker-compose.yaml          # Full stack orchestration (Kafka cluster + services)
+└── .github/workflows/           # CI/CD pipelines
 ```
 
-## 🔧 Configuration
+## 🔄 Event Flow
 
-### Configuration Management (Environment)
-
-Configuration is managed via environment variables for flexibility and 12-factor compatibility. For local development, the project automatically loads variables from a `.env` file (not committed); see `.env.example` for a template you can copy and edit.
-
-Supported variables:
-
-| Variable                   | Description                              | Default                      |
-|----------------------------|------------------------------------------|------------------------------|
-| `KAFKA_BROKERS`            | Comma-separated Kafka broker list         | (required)                   |
-| `KAFKA_TOPIC`              | Kafka topic for events                   | orders                       |
-| `KAFKA_GROUP_ID`           | Consumer group name (consumer only)      | order-consumer-group         |
-| `KAFKA_NUM_PARTITIONS`     | Number of topic partitions               | 3                            |
-| `KAFKA_REPLICATION_FACTOR` | Replication factor for topic             | 3                            |
-| `HTTP_PORT`                | HTTP server port (producer/consumer)     | 4000                         |
-
-Override these variables by editing `.env` (for local runs), exporting in your shell, or providing them with `docker-compose`/Kubernetes manifests in production. The app will fail fast if a required variable (such as `KAFKA_BROKERS`) is not set.
-
-See [`.env.example`](./.env.example) for a useful template.
-
-### Kafka Details
-
-The Kafka cluster is configured with:
-- **3 brokers** with KRaft mode (no Zookeeper)
-- **3 partitions** per topic
-- **Replication factor of 3** for high availability
-- **Topic**: `orders`
-- **Consumer Group**: `order-consumer-group`
-
-### Order Event Schema
-
-```go
-type OrderEvent struct {
-    OrderID    string    `json:"order_id"`
-    CustomerID string    `json:"customer_id"`
-    Amount     float64   `json:"amount"`
-    CreatedAt  time.Time `json:"created_at"`
-}
+```
+┌──────────────┐     ┌───────────────┐     ┌──────────────┐
+│   Producer   │────▶│  Kafka Topic  │────▶│   Consumer   │
+│  (HTTP API)  │     │   "orders"    │     │  (Processor) │
+└──────────────┘     │  3 partitions │     └──────┬───────┘
+                     │  RF = 3       │            │
+                     └───────────────┘            │ invalid?
+                                                  ▼
+                                          ┌──────────────┐
+                                          │  DLQ Topic   │
+                                          │ "orders.dlq" │
+                                          └──────────────┘
 ```
 
-## 🚦 CI/CD & Automation
+## 🔄 Graceful Shutdown Flow
 
-This project uses GitHub Actions to automate:
-- Build, lint, and test all Go code
-- Build and push Docker images to Docker Hub (for both order-producer and order-consumer) on every push to `main`
-- Sign images using cosign for supply chain security
+When a shutdown signal is received, the `lifecycle` package executes cleanup tasks in **LIFO** (reverse) order:
 
-### Docker Images
-- Images are published at: `docker.io/<yourdockerhubuser>/kafka-event-driven-example-producer` and `docker.io/<yourdockerhubuser>/kafka-event-driven-example-consumer`
-- Each image is tagged with the Git commit SHA and related tags (see Docker Hub UI for details)
-
-**Example usage:**
-```sh
-docker pull docker.io/<yourdockerhubuser>/kafka-event-driven-example-producer:<sha-or-latest>
-docker run --env-file .env docker.io/<yourdockerhubuser>/kafka-event-driven-example-producer:<sha-or-latest>
-```
-
-- See required environment variables in the [Configuration](#configuration-management-environment) section above.
-- You must provide Kafka connection parameters either via `.env` or `-e`/`--env-file` at runtime for images to run correctly!
-
-Image signatures via cosign allow users to verify authenticity. For verification instructions see [cosign documentation](https://docs.sigstore.dev/cosign/overview/).
-
-You can find and edit the workflow config at:
-- [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) – Docker publish
-- [.github/workflows/ci.yml](.github/workflows/ci.yml) – Go build/test
-
----
+1. **HTTP Server**: Calls `srv.Shutdown(ctx)` to stop accepting new connections and drain in-flight requests
+2. **Kafka Client**:
+   - **Producer**: Executes `producer.Flush(timeout)` to deliver buffered messages, then `producer.Close()`
+   - **Consumer**: Calls `consumer.Close()`, notifying the cluster for immediate group rebalancing
+3. **DLQ Producer**: Closes the DLQ producer connection
+4. **Context**: The parent context is cancelled, signaling all goroutines to stop
 
 ## 🧪 Testing
-
-### Running Tests
 
 ```bash
 # Run all tests
 go test ./...
 
+# Run tests with verbose output
+go test -v ./internal/...
+
 # Run tests with coverage
 go test -cover ./...
-
-# Run specific package tests
-go test ./internal/handler
-go test ./internal/kafka
 ```
 
 ### Test Coverage
 
 The project includes unit tests for:
-- Health check handlers
-- Kafka producer/consumer functionality
-- Error handling scenarios
-
-## 📈 Monitoring
-
-### AKHQ Dashboard
-
-Access the AKHQ dashboard at http://localhost:9090 to:
-- Monitor Kafka cluster health
-- View topic details and message flow
-- Check consumer group status
-- Browse messages in topics
-
-### Health Checks
-
-Both services expose health check endpoints:
-- Producer: `GET /health`
-- Consumer: `GET /health`
+- Retry engine (success after retries, fatal error abort, context cancellation)
+- Kafka config and broker list building
+- Producer context cancellation handling
+- DLQ topic naming
+- Health check HTTP handler
 
 ## 🐳 Docker Details
 
 ### Multi-stage Builds
 
-Both services use multi-stage Docker builds:
-1. **Builder stage**: Compiles the Go application
-2. **Runner stage**: Creates minimal runtime image
+Both services use multi-stage Docker builds for minimal runtime images:
+1. **Builder stage**: Compiles the Go application with CGO (required for librdkafka)
+2. **Runner stage**: Debian bookworm-slim with only `librdkafka1` and `ca-certificates`
 
-### Dependencies
+### Docker Images
 
-- **librdkafka**: C library for Kafka client
-- **dockerize**: For service dependency waiting
-- **ca-certificates**: For HTTPS connections
+Images are published to Docker Hub on every push to `main`:
+- `docker.io/<user>/kafka-event-driven-example-producer`
+- `docker.io/<user>/kafka-event-driven-example-consumer`
 
-## 🔄 Event Flow
-
-1. **Order Producer** generates sample order events
-2. Events are published to the `orders` topic
-3. **Order Consumer** subscribes to the topic
-4. Consumer processes events asynchronously
-5. Both services expose health check endpoints
-
-## 🛠️ Development
-
-### Adding New Event Types
-
-1. Define new event struct in `internal/kafka/kafka.go`
-2. Add producer/consumer methods for the new event type
-3. Update the main functions to handle the new events
-
-### Extending the API
-
-1. Add new handlers in `internal/handler/`
-2. Register routes in `internal/router/router.go`
-3. Add corresponding tests
+Each image is signed with [cosign](https://docs.sigstore.dev/cosign/overview/) for supply chain security.
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-## 📚 Resources
-
-- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
-- [Confluent Kafka Go Client](https://github.com/confluentinc/confluent-kafka-go)
-- [AKHQ Documentation](https://akhq.io/)
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

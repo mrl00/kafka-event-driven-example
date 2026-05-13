@@ -3,6 +3,7 @@ module github.com/mrl00/kafka-event-driven-example
 go 1.25.1
 
 require (
+	github.com/IBM/fp-go/v2 v2.2.78
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/joho/godotenv v1.5.1
 )
