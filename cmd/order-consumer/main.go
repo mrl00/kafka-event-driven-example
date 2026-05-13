@@ -8,6 +8,7 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/appconfig"
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
 	"github.com/mrl00/kafka-event-driven-example/internal/lifecycle"
+	"github.com/mrl00/kafka-event-driven-example/internal/router"
 	"github.com/mrl00/kafka-event-driven-example/internal/server"
 )
 
@@ -34,6 +35,8 @@ func main() {
 	}
 	slog.Info("Consumer Kafka criado com sucesso")
 
+	r := router.ConsumerRouter()
+
 	srv := server.StartServer(server.Config{
 		Name:              "consumer",
 		Port:              cfg.HTTPPort,
@@ -41,7 +44,7 @@ func main() {
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
-	})
+	}, r)
 
 	dlq, err := kafka.NewDLQProducer(kcfg)
 	if err != nil {
