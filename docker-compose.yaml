@@ -1,9 +1,11 @@
 services:
   order-producer:
-    image: zxcqmrl/kafka-event-driven-example-producer:main
-    container_name: order_producer
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.producer
+    #image: order-producer:latest
+    container_name: order-producer
     hostname: order_producer
-    entrypoint: dockerize -wait tcp://kafka1:19092 -timeout 60s /app/order-producer
     ports:
       - "4000:4000"
     depends_on:
@@ -19,11 +21,12 @@ services:
       - kafka-cluster-net
 
   order-consumer:
-    image: zxcqmrl/kafka-event-driven-example-consumer:main
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.consumer
+    #image: order-consumer:latest
     container_name: order_consumer
     hostname: order_consumer
-    entrypoint: dockerize -wait tcp://order_producer:4000/health -timeout 60s
-      /app/order-consumer
     ports:
       - "4001:4000"
     depends_on:
@@ -48,13 +51,13 @@ services:
       test:
         [
           "CMD-SHELL",
-          "kafka-cluster cluster-id --bootstrap-server localhost:9092 || exit
+          "kafka-cluster cluster-id --bootstrap-server localhost:19092 || exit
             1",
         ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 40s
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -84,13 +87,13 @@ services:
       test:
         [
           "CMD-SHELL",
-          "kafka-cluster cluster-id --bootstrap-server localhost:9092 || exit
+          "kafka-cluster cluster-id --bootstrap-server localhost:19092 || exit
             1",
         ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 40s
     environment:
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -120,13 +123,13 @@ services:
       test:
         [
           "CMD-SHELL",
-          "kafka-cluster cluster-id --bootstrap-server localhost:9092 || exit
+          "kafka-cluster cluster-id --bootstrap-server localhost:19092 || exit
             1",
         ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 40s
     environment:
       KAFKA_NODE_ID: 3
       KAFKA_PROCESS_ROLES: "broker,controller"

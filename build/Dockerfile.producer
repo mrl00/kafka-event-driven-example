@@ -1,4 +1,6 @@
-# --- Estágio 1: Builder ---
+# =============================================================================
+# Estágio 1: Builder
+# =============================================================================
 FROM golang:1.26.2-bookworm AS builder
 
 # Instala dependências de compilação para o driver Confluent (CGO)
@@ -11,21 +13,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Otimização de Cache: Baixa dependências antes de copiar o código fonte
+# Otimização de cache: baixa dependências antes de copiar o código fonte
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copia código fonte
-COPY . .
+# CORRIGIDO: copia apenas os pacotes necessários ao producer
+# (evita invalidar cache por mudanças em arquivos não relacionados)
+COPY internal/ ./internal/
+COPY cmd/order-producer/ ./cmd/order-producer/
 
-# Build de alta performance:
-# - CGO_ENABLED=1: Necessário para librdkafka
-# - ldflags="-s -w": Remove tabelas de símbolos (binário menor)
+# Build de produção:
+# - CGO_ENABLED=1: necessário para librdkafka
+# - ldflags="-s -w": remove tabelas de símbolos (binário menor)
 RUN CGO_ENABLED=1 GOOS=linux go build \
   -ldflags="-s -w" \
   -o /app/order-producer ./cmd/order-producer/main.go
 
-# --- Estágio 2: Runner (Final) ---
+# Coleta as libs dinâmicas necessárias em tempo de build
+# usando ldd para ser agnóstico à arquitetura (x86_64, arm64, etc.)
+RUN mkdir /libs && \
+  ldd /app/order-producer \
+  | grep "=> /" \
+  | awk '{print $3}' \
+  | xargs -I{} cp --no-dereference {} /libs/ && \
+  # Copia também os symlinks para garantir resolução correta
+  ldd /app/order-producer \
+  | grep "=> /" \
+  | awk '{print $3}' \
+  | xargs -I{} sh -c 'ls -la $(dirname {}) | grep $(basename {}) | grep "^l" | awk "{print \$9}" | xargs -I@ cp --no-dereference $(dirname {})/@  /libs/ 2>/dev/null || true'
+
+# =============================================================================
+# Estágio 2: Runner (Distroless)
+# =============================================================================
 FROM gcr.io/distroless/base-debian12 AS runner
 
 WORKDIR /app
@@ -33,20 +52,15 @@ WORKDIR /app
 # Copia o binário compilado
 COPY --from=builder /app/order-producer .
 
-# Copia bibliotecas compartilhadas necessárias para o librdkafka
-# Incluímos libssl e libcrypto para garantir suporte a conexões seguras/autenticadas
-COPY --from=builder /usr/lib/x86_64-linux-gnu/librdkafka* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libssl.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libsasl2.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libzstd.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/liblz4.so* /usr/lib/x86_64-linux-gnu/
+# CORRIGIDO: copia libs coletadas dinamicamente via ldd
+# Isso garante compatibilidade com qualquer arquitetura (x86_64, arm64, etc.)
+COPY --from=builder /libs/ /usr/lib/
 
 # Configurações de execução
 ENV PORT=4000
 EXPOSE $PORT
 
-# Distroless não tem shell, então o formato JSON é obrigatório
+# Distroless não tem shell: formato JSON é obrigatório no ENTRYPOINT
 # O usuário 'nonroot' já vem criado na imagem distroless
 USER nonroot:nonroot
 
