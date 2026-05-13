@@ -12,6 +12,9 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/retry"
 )
 
+type Producer = ckafka.Producer
+type Consumer = ckafka.Consumer
+
 type kafkaError struct {
 	err       error
 	retryable bool
@@ -61,7 +64,7 @@ type OrderEvent struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func NewProducer(cfg Config) (*ckafka.Producer, error) {
+func NewProducer(cfg Config) (*Producer, error) {
 	var p *ckafka.Producer
 	retryCfg := retry.DefaultConfig()
 
@@ -83,7 +86,7 @@ func NewProducer(cfg Config) (*ckafka.Producer, error) {
 	return p, err
 }
 
-func ProduceOrder(ctx context.Context, producer *ckafka.Producer, topic string, order OrderEvent) error {
+func ProduceOrder(ctx context.Context, producer *Producer, topic string, order OrderEvent) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -126,8 +129,8 @@ func ProduceOrder(ctx context.Context, producer *ckafka.Producer, topic string, 
 	})
 }
 
-func NewConsumer(ctx context.Context, cfg Config) (*ckafka.Consumer, error) {
-	var c *ckafka.Consumer
+func NewConsumer(ctx context.Context, cfg Config) (*Consumer, error) {
+	var c *Consumer
 	retryCfg := retry.DefaultConfig()
 
 	err := retry.Do(ctx, retryCfg, func(ctx context.Context) error {
@@ -153,7 +156,7 @@ func NewConsumer(ctx context.Context, cfg Config) (*ckafka.Consumer, error) {
 	return c, err
 }
 
-func ConsumeOrders(ctx context.Context, consumer *ckafka.Consumer, dlq *DLQProducer) error {
+func ConsumeOrders(ctx context.Context, consumer *Consumer, dlq *DLQProducer) error {
 	slog.InfoContext(ctx, "Iniciando loop de consumo de ordens")
 
 	for {
