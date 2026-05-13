@@ -1,29 +1,40 @@
 services:
   order-producer:
-    image: zxcqmrl/kafka-event-driven-example-producer
+    image: zxcqmrl/kafka-event-driven-example-producer:main
     container_name: order_producer
     hostname: order_producer
     entrypoint: dockerize -wait tcp://kafka1:19092 -timeout 60s /app/order-producer
     ports:
       - "4000:4000"
     depends_on:
-      - kafka1
-      - kafka2
-      - kafka3
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: "kafka1:19092,kafka2:19092,kafka3:19092"
     networks:
       - kafka-cluster-net
 
   order-consumer:
-    image: zxcqmrl/kafka-event-driven-example-consumer
+    image: zxcqmrl/kafka-event-driven-example-consumer:main
     container_name: order_consumer
     hostname: order_consumer
-    entrypoint: dockerize -wait tcp://order_producer:4000/health -timeout 60s /app/order-consumer
+    entrypoint: dockerize -wait tcp://order_producer:4000/health -timeout 60s
+      /app/order-consumer
     ports:
       - "4001:4000"
     depends_on:
-      - kafka1
-      - kafka2
-      - kafka3
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: "kafka1:19092,kafka2:19092,kafka3:19092"
     networks:
       - kafka-cluster-net
 
@@ -33,6 +44,17 @@ services:
     hostname: kafka1
     ports:
       - "29092:9092"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-cluster cluster-id --bootstrap-server localhost:9092 || exit
+            1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -49,8 +71,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
       CLUSTER_ID: bd669940-a465-483e-b99e-bec44fceb0ad
-    #    volumes:
-    #      - ./kafka1_data:/var/lib/kafka/data
     networks:
       - kafka-cluster-net
 
@@ -60,6 +80,17 @@ services:
     hostname: kafka2
     ports:
       - "39092:9092"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-cluster cluster-id --bootstrap-server localhost:9092 || exit
+            1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     environment:
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -76,8 +107,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
       CLUSTER_ID: bd669940-a465-483e-b99e-bec44fceb0ad
-    #    volumes:
-    #      - ./kafka2_data:/var/lib/kafka/data
     networks:
       - kafka-cluster-net
 
@@ -87,6 +116,17 @@ services:
     hostname: kafka3
     ports:
       - "49092:9092"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-cluster cluster-id --bootstrap-server localhost:9092 || exit
+            1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     environment:
       KAFKA_NODE_ID: 3
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -103,8 +143,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
       CLUSTER_ID: bd669940-a465-483e-b99e-bec44fceb0ad
-    #    volumes:
-    #      - ./kafka3_data:/var/lib/kafka/data
     networks:
       - kafka-cluster-net
 

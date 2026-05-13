@@ -1,31 +1,52 @@
-FROM golang:1.25.1 AS builder
+# --- Estágio 1: Builder ---
+FROM golang:1.26.2-bookworm AS builder
+
+# Instala dependências necessárias para compilar o driver do Kafka (CGO)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  gcc \
+  libc-dev \
+  pkg-config \
+  librdkafka-dev \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY go.mod ./
-COPY go.sum ./
-
+# Otimização de Cache para dependências
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY cmd/order-consumer/main.go ./cmd/order-consumer/main.go
+# Copia o código fonte (focado no consumer)
 COPY internal/ ./internal/
+COPY cmd/order-consumer/ ./cmd/order-consumer/
 
-RUN go build -o /app/order-consumer ./cmd/order-consumer/main.go
+# Build otimizado para produção
+# CGO_ENABLED=1 é obrigatório para consumidores que usam librdkafka
+RUN CGO_ENABLED=1 GOOS=linux go build \
+  -ldflags="-s -w" \
+  -o /app/order-consumer ./cmd/order-consumer/main.go
 
-FROM debian:bookworm-slim AS runner
-
-ENV PORT=4000
-ENV DOCKERIZE_VERSION=v0.9.6
-
-EXPOSE $PORT
-
-RUN apt-get update \
-  && apt-get install -y wget ca-certificates librdkafka1 \
-  && wget -O - https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz | tar xzf - -C /usr/local/bin \
-  && apt-get autoremove -yqq --purge wget && rm -rf /var/lib/apt/lists/*
+# --- Estágio 2: Runner (Distroless) ---
+FROM gcr.io/distroless/base-debian12 AS runner
 
 WORKDIR /app
 
+# Copia o binário do estágio builder
 COPY --from=builder /app/order-consumer .
 
-CMD ["./order-consumer"]
+# Copia as bibliotecas dinâmicas essenciais para o Consumer (Kafka + Segurança)
+COPY --from=builder /usr/lib/x86_64-linux-gnu/librdkafka* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libssl.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libsasl2.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libzstd.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/liblz4.so* /usr/lib/x86_64-linux-gnu/
+
+# Configurações de ambiente e porta
+ENV PORT=4000
+EXPOSE $PORT
+
+# Roda com usuário não-privilegiado (padrão da imagem distroless)
+USER nonroot:nonroot
+
+# Entrypoint direto (sem shell)
+ENTRYPOINT ["./order-consumer"]
