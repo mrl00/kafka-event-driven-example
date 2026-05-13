@@ -1,4 +1,6 @@
-# --- Estágio 1: Builder ---
+# =============================================================================
+# Estágio 1: Builder
+# =============================================================================
 FROM golang:1.26.2-bookworm AS builder
 
 # Instala dependências necessárias para compilar o driver do Kafka (CGO)
@@ -11,11 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Otimização de Cache para dependências
+# Otimização de cache: baixa dependências antes de copiar o código fonte
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copia o código fonte (focado no consumer)
+# Copia apenas os pacotes necessários ao consumer
 COPY internal/ ./internal/
 COPY cmd/order-consumer/ ./cmd/order-consumer/
 
@@ -25,7 +27,21 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
   -ldflags="-s -w" \
   -o /app/order-consumer ./cmd/order-consumer/main.go
 
-# --- Estágio 2: Runner (Distroless) ---
+# Coleta as libs dinâmicas necessárias em tempo de build
+# usando ldd para ser agnóstico à arquitetura (x86_64, arm64, etc.)
+RUN mkdir /libs && \
+  ldd /app/order-consumer \
+  | grep "=> /" \
+  | awk '{print $3}' \
+  | xargs -I{} cp --no-dereference {} /libs/ && \
+  ldd /app/order-consumer \
+  | grep "=> /" \
+  | awk '{print $3}' \
+  | xargs -I{} sh -c 'ls -la $(dirname {}) | grep $(basename {}) | grep "^l" | awk "{print \$9}" | xargs -I@ cp --no-dereference $(dirname {})/@  /libs/ 2>/dev/null || true'
+
+# =============================================================================
+# Estágio 2: Runner (Distroless)
+# =============================================================================
 FROM gcr.io/distroless/base-debian12 AS runner
 
 WORKDIR /app
@@ -33,17 +49,15 @@ WORKDIR /app
 # Copia o binário do estágio builder
 COPY --from=builder /app/order-consumer .
 
-# Copia as bibliotecas dinâmicas essenciais para o Consumer (Kafka + Segurança)
-COPY --from=builder /usr/lib/x86_64-linux-gnu/librdkafka* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libssl.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libsasl2.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libzstd.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/liblz4.so* /usr/lib/x86_64-linux-gnu/
+# CORRIGIDO: copia libs coletadas dinamicamente via ldd
+# Isso garante compatibilidade com qualquer arquitetura (x86_64, arm64, etc.)
+COPY --from=builder /libs/ /usr/lib/
 
-# Configurações de ambiente e porta
-ENV PORT=4000
-EXPOSE $PORT
+# CORRIGIDO: consumer Kafka não expõe porta HTTP
+# Remova as linhas abaixo caso o consumer não tenha endpoint HTTP/healthcheck
+# Se houver endpoint de métricas (ex: Prometheus), adicione a porta correta aqui
+# ENV PORT=4000
+# EXPOSE $PORT
 
 # Roda com usuário não-privilegiado (padrão da imagem distroless)
 USER nonroot:nonroot
