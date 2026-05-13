@@ -4,8 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/mrl00/kafka-event-driven-example/internal/router"
 )
 
 type Config struct {
@@ -17,7 +15,7 @@ type Config struct {
 	ReadHeaderTimeout time.Duration
 }
 
-func StartServer(cfg Config) *http.Server {
+func StartServer(cfg Config, r http.Handler) *http.Server {
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		ReadTimeout:       cfg.ReadTimeout,
@@ -25,7 +23,7 @@ func StartServer(cfg Config) *http.Server {
 		IdleTimeout:       cfg.IdleTimeout,
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		MaxHeaderBytes:    1 << 20, // 1MB
-		Handler:           router.New(),
+		Handler:           r,
 	}
 
 	go func() {
