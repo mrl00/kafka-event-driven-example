@@ -1,35 +1,53 @@
-FROM golang:1.25.1 AS builder
+# --- Estágio 1: Builder ---
+FROM golang:1.26.2-bookworm AS builder
+
+# Instala dependências de compilação para o driver Confluent (CGO)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  gcc \
+  libc-dev \
+  pkg-config \
+  librdkafka-dev \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y git gcc pkgconf librdkafka-dev
-
-COPY go.mod ./
-COPY go.sum ./
-
+# Otimização de Cache: Baixa dependências antes de copiar o código fonte
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY cmd/order-producer/main.go ./cmd/order-producer/main.go
-COPY internal/ ./internal/
+# Copia código fonte
+COPY . .
 
-RUN go build -o /app/order-producer ./cmd/order-producer/main.go
+# Build de alta performance:
+# - CGO_ENABLED=1: Necessário para librdkafka
+# - ldflags="-s -w": Remove tabelas de símbolos (binário menor)
+RUN CGO_ENABLED=1 GOOS=linux go build \
+  -ldflags="-s -w" \
+  -o /app/order-producer ./cmd/order-producer/main.go
 
-FROM debian:bookworm-slim AS runner
-
-ENV PORT=4000
-ENV DOCKERIZE_VERSION=v0.9.6
-
-EXPOSE $PORT
-
-RUN apt-get update \
-  && apt-get install -y wget \
-  && wget -O - https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz | tar xzf - -C /usr/local/bin \
-  && apt-get autoremove -yqq --purge wget && rm -rf /var/lib/apt/lists/*
+# --- Estágio 2: Runner (Final) ---
+FROM gcr.io/distroless/base-debian12 AS runner
 
 WORKDIR /app
 
+# Copia o binário compilado
 COPY --from=builder /app/order-producer .
 
-RUN apt-get update && apt-get install -y ca-certificates librdkafka1 && rm -rf /var/lib/apt/lists/*
+# Copia bibliotecas compartilhadas necessárias para o librdkafka
+# Incluímos libssl e libcrypto para garantir suporte a conexões seguras/autenticadas
+COPY --from=builder /usr/lib/x86_64-linux-gnu/librdkafka* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libssl.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libsasl2.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libzstd.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/liblz4.so* /usr/lib/x86_64-linux-gnu/
 
-CMD ["./order-producer"]
+# Configurações de execução
+ENV PORT=4000
+EXPOSE $PORT
+
+# Distroless não tem shell, então o formato JSON é obrigatório
+# O usuário 'nonroot' já vem criado na imagem distroless
+USER nonroot:nonroot
+
+ENTRYPOINT ["./order-producer"]
