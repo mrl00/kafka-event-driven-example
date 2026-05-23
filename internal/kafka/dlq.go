@@ -27,15 +27,24 @@ func NewDLQProducer(cfg Config) (*DLQProducer, error) {
 	}, nil
 }
 
-func (d *DLQProducer) Send(ctx context.Context, originalMsg *ckafka.Message, errStr string, errorType string) error {
-	headers := []ckafka.Header{
+func (d *DLQProducer) buildHeaders(originalMsg *ckafka.Message, errStr string, errorType string, retryCount int) []ckafka.Header {
+	topic := ""
+	if originalMsg.TopicPartition.Topic != nil {
+		topic = *originalMsg.TopicPartition.Topic
+	}
+	return []ckafka.Header{
 		{Key: "dlq.error", Value: []byte(errStr)},
 		{Key: "dlq.error_type", Value: []byte(errorType)},
-		{Key: "dlq.original_topic", Value: []byte(*originalMsg.TopicPartition.Topic)},
+		{Key: "dlq.original_topic", Value: []byte(topic)},
 		{Key: "dlq.original_partition", Value: []byte(strconv.Itoa(int(originalMsg.TopicPartition.Partition)))},
 		{Key: "dlq.original_offset", Value: []byte(originalMsg.TopicPartition.Offset.String())},
 		{Key: "dlq.timestamp", Value: []byte(time.Now().Format(time.RFC3339))},
+		{Key: "dlq.retry_count", Value: []byte(strconv.Itoa(retryCount))},
 	}
+}
+
+func (d *DLQProducer) Send(ctx context.Context, originalMsg *ckafka.Message, errStr string, errorType string, retryCount int) error {
+	headers := d.buildHeaders(originalMsg, errStr, errorType, retryCount)
 
 	dlqMsg := &ckafka.Message{
 		TopicPartition: ckafka.TopicPartition{
