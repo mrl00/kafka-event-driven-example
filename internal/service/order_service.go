@@ -8,11 +8,11 @@ import (
 )
 
 type OrderService struct {
-	producer *kafka.Producer
+	producer kafka.Producer
 	topic    string
 }
 
-func NewOrderService(producer *kafka.Producer, topic string) *OrderService {
+func NewOrderService(producer kafka.Producer, topic string) *OrderService {
 	return &OrderService{producer: producer, topic: topic}
 }
 
