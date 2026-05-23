@@ -31,7 +31,7 @@ func NewDLQProducerWithProducer(producer Producer, topic string) *DLQProducer {
 	return &DLQProducer{producer: producer, topic: topic + ".dlq"}
 }
 
-func (d *DLQProducer) buildHeaders(originalMsg *ckafka.Message, errStr string, errorType string, retryCount int) []ckafka.Header {
+func (d *DLQProducer) buildHeaders(originalMsg *ckafka.Message, errStr, errorType string, retryCount int) []ckafka.Header {
 	topic := ""
 	if originalMsg.TopicPartition.Topic != nil {
 		topic = *originalMsg.TopicPartition.Topic
@@ -47,7 +47,7 @@ func (d *DLQProducer) buildHeaders(originalMsg *ckafka.Message, errStr string, e
 	}
 }
 
-func (d *DLQProducer) Send(ctx context.Context, originalMsg *ckafka.Message, errStr string, errorType string, retryCount int) error {
+func (d *DLQProducer) Send(ctx context.Context, originalMsg *ckafka.Message, errStr, errorType string, retryCount int) error {
 	headers := d.buildHeaders(originalMsg, errStr, errorType, retryCount)
 
 	dlqMsg := &ckafka.Message{

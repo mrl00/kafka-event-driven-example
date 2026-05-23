@@ -12,6 +12,8 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka/mocks"
 )
 
+const testOrderID = "ORD001"
+
 func TestWrapRetryable(t *testing.T) {
 	t.Run("deve retornar nil se o erro for nil", func(t *testing.T) {
 		err := wrapRetryable(nil)
@@ -88,7 +90,7 @@ func TestProduceOrder_Success(t *testing.T) {
 	}
 
 	event := OrderEvent{
-		OrderID:    "ORD001",
+		OrderID:    testOrderID,
 		CustomerID: "CUST001",
 		Amount:     99.99,
 		CreatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -121,7 +123,7 @@ func TestProduceOrder_ProduceError(t *testing.T) {
 		},
 	}
 
-	err := ProduceOrder(context.Background(), mockProducer, "orders", OrderEvent{OrderID: "ORD001"})
+	err := ProduceOrder(context.Background(), mockProducer, "orders", OrderEvent{OrderID: testOrderID})
 	if err == nil {
 		t.Fatal("esperava erro, recebeu nil")
 	}
@@ -141,7 +143,7 @@ func TestProduceOrder_DeliveryError(t *testing.T) {
 		},
 	}
 
-	err := ProduceOrder(context.Background(), mockProducer, "orders", OrderEvent{OrderID: "ORD001"})
+	err := ProduceOrder(context.Background(), mockProducer, "orders", OrderEvent{OrderID: testOrderID})
 	if err == nil {
 		t.Fatal("esperava erro de delivery, recebeu nil")
 	}
@@ -165,7 +167,7 @@ func TestProduceOrder_ContextCancelledDuringDelivery(t *testing.T) {
 		cancel()
 	}()
 
-	err := ProduceOrder(ctx, mockProducer, "orders", OrderEvent{OrderID: "ORD001"})
+	err := ProduceOrder(ctx, mockProducer, "orders", OrderEvent{OrderID: testOrderID})
 	if err == nil {
 		t.Fatal("esperava erro de contexto cancelado, recebeu nil")
 	}

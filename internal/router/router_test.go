@@ -23,7 +23,7 @@ func TestRouter_HealthRoute(t *testing.T) {
 	r := router.ProducerRouter(orderHandler)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 
 	r.ServeHTTP(w, req)
 
@@ -42,7 +42,7 @@ func TestRouter_NotFound(t *testing.T) {
 	r := router.ProducerRouter(orderHandler)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/nonexistent", http.NoBody)
 
 	r.ServeHTTP(w, req)
 
@@ -56,7 +56,7 @@ func TestRouter_MethodNotAllowed(t *testing.T) {
 	r := router.ProducerRouter(orderHandler)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/health", nil)
+	req := httptest.NewRequest(http.MethodPost, "/health", http.NoBody)
 
 	r.ServeHTTP(w, req)
 
