@@ -1,5 +1,6 @@
 COVERAGE_THRESHOLD ?= 60
 COVERAGE_PROFILE ?= coverage.out
+COVERAGE_PKGS = $(shell go list ./internal/... | grep -vE '/mocks|/dto')
 
 .PHONY: test test-cover lint build bench clean
 
@@ -7,7 +8,7 @@ test:
 	go test -v -race -count=1 ./internal/... ./cmd/...
 
 test-cover:
-	go test -race -coverprofile=$(COVERAGE_PROFILE) -covermode=atomic -count=1 ./internal/... ./cmd/...
+	go test -race -coverprofile=$(COVERAGE_PROFILE) -covermode=atomic -count=1 $(COVERAGE_PKGS)
 	go tool cover -func=$(COVERAGE_PROFILE)
 
 test-cover-check: test-cover

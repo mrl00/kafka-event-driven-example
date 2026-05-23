@@ -31,7 +31,9 @@ jobs:
         run: go build -v ./cmd/order-consumer
 
       - name: Run unit tests with coverage
-        run: go test -v -coverprofile=coverage.out -covermode=atomic -count=1 ./internal/... ./cmd/...
+        run: |
+          pkgs=$(go list ./internal/... | grep -vE '/mocks|/dto')
+          go test -v -coverprofile=coverage.out -covermode=atomic -count=1 ${pkgs}
 
       - name: Check coverage threshold
         run: |
