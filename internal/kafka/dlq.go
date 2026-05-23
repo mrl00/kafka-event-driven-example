@@ -10,7 +10,7 @@ import (
 )
 
 type DLQProducer struct {
-	producer *ckafka.Producer
+	producer Producer
 	topic    string
 }
 
@@ -25,6 +25,10 @@ func NewDLQProducer(cfg Config) (*DLQProducer, error) {
 		producer: p,
 		topic:    topic,
 	}, nil
+}
+
+func NewDLQProducerWithProducer(producer Producer, topic string) *DLQProducer {
+	return &DLQProducer{producer: producer, topic: topic + ".dlq"}
 }
 
 func (d *DLQProducer) buildHeaders(originalMsg *ckafka.Message, errStr string, errorType string, retryCount int) []ckafka.Header {
