@@ -12,7 +12,10 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka/mocks"
 )
 
-const testOrderID = "ORD001"
+const (
+	testOrderID    = "ORD001"
+	testCustomerID = "CUST001"
+)
 
 func TestWrapRetryable(t *testing.T) {
 	t.Run("deve retornar nil se o erro for nil", func(t *testing.T) {
@@ -91,7 +94,7 @@ func TestProduceOrder_Success(t *testing.T) {
 
 	event := OrderEvent{
 		OrderID:    testOrderID,
-		CustomerID: "CUST001",
+		CustomerID: testCustomerID,
 		Amount:     99.99,
 		CreatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
