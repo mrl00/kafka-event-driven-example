@@ -20,12 +20,18 @@ RUN go mod download
 # Copia apenas os pacotes necessários ao consumer
 COPY internal/ ./internal/
 COPY cmd/order-consumer/ ./cmd/order-consumer/
+COPY cmd/healthcheck/ ./cmd/healthcheck/
 
 # Build otimizado para produção
 # CGO_ENABLED=1 é obrigatório para consumidores que usam librdkafka
 RUN CGO_ENABLED=1 GOOS=linux go build \
   -ldflags="-s -w" \
   -o /app/order-consumer ./cmd/order-consumer/main.go
+
+# Healthcheck binário estático (sem CGO para distroless)
+RUN CGO_ENABLED=0 GOOS=linux go build \
+  -ldflags="-s -w" \
+  -o /app/healthcheck ./cmd/healthcheck/main.go
 
 # Coleta as libs dinâmicas necessárias em tempo de build
 # usando ldd para ser agnóstico à arquitetura (x86_64, arm64, etc.)
@@ -46,8 +52,9 @@ FROM gcr.io/distroless/base-debian12 AS runner
 
 WORKDIR /app
 
-# Copia o binário do estágio builder
+# Copia os binários do estágio builder
 COPY --from=builder /app/order-consumer .
+COPY --from=builder /app/healthcheck .
 
 # CORRIGIDO: copia libs coletadas dinamicamente via ldd
 # Isso garante compatibilidade com qualquer arquitetura (x86_64, arm64, etc.)
@@ -61,6 +68,9 @@ COPY --from=builder /libs/ /usr/lib/
 
 # Roda com usuário não-privilegiado (padrão da imagem distroless)
 USER nonroot:nonroot
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=20s \
+  CMD ["./healthcheck", "-healthcheck"]
 
 # Entrypoint direto (sem shell)
 ENTRYPOINT ["./order-consumer"]

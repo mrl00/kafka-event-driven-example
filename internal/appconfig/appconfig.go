@@ -22,6 +22,7 @@ type AppConfig struct {
 	IdleTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
 	ShutdownTimeout   time.Duration
+	DemoMode          bool
 }
 
 func LoadProducerConfig() AppConfig {
@@ -82,6 +83,7 @@ func loadConfig(forConsumer bool) AppConfig {
 		IdleTimeout:       parseDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
 		ReadHeaderTimeout: parseDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
 		ShutdownTimeout:   parseDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
+		DemoMode:          os.Getenv("DEMO_MODE") == "true",
 	}
 }
 

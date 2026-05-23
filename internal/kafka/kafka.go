@@ -177,14 +177,14 @@ func ConsumeOrders(ctx context.Context, consumer *Consumer, dlq *DLQProducer) er
 			var order OrderEvent
 			if err := json.Unmarshal(msg.Value, &order); err != nil {
 				slog.WarnContext(ctx, "Invalid Message. Sending to DLQ", "error", err)
-				_ = dlq.Send(ctx, msg, "error", "deserialization")
+				_ = dlq.Send(ctx, msg, err.Error(), "deserialization", 0)
 				continue
 			}
 
 			if order.Amount <= 0 {
 				errMsg := "order amount must be greater than zero"
 				slog.WarnContext(ctx, "Validation Error. Sending to DLQ", "order_id", order.OrderID)
-				_ = dlq.Send(ctx, msg, errMsg, "validation")
+				_ = dlq.Send(ctx, msg, errMsg, "validation", 0)
 				continue
 			}
 
@@ -228,7 +228,7 @@ func EnsureTopic(ctx context.Context, cfg Config) error {
 
 		for _, result := range results {
 			if result.Error.Code() != ckafka.ErrNoError && result.Error.Code() != ckafka.ErrTopicAlreadyExists {
-				return fmt.Errorf("topic creation error for %s: %v", result.Topic, result.Error)
+				return fmt.Errorf("topic creation error for %s: %w", result.Topic, result.Error)
 			}
 		}
 

@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+
 	cfg := appconfig.LoadProducerConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -52,6 +53,34 @@ func main() {
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}, r)
 
+	if cfg.DemoMode {
+		slog.Info("DEMO_MODE ativado — gerando orders hardcoded")
+		go func() {
+			demoOrders := []kafka.OrderEvent{
+				{OrderID: "DEMO-001", CustomerID: "CUST-001", Amount: 150.00, CreatedAt: time.Now()},
+				{OrderID: "DEMO-002", CustomerID: "CUST-002", Amount: 250.50, CreatedAt: time.Now()},
+				{OrderID: "DEMO-003", CustomerID: "CUST-003", Amount: 99.99, CreatedAt: time.Now()},
+			}
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			idx := 0
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					order := demoOrders[idx%len(demoOrders)]
+					idx++
+					if err := kafka.ProduceOrder(ctx, producer, cfg.Topic, order); err != nil {
+						slog.Error("demo: falha ao produzir order", "order_id", order.OrderID, "error", err)
+					} else {
+						slog.Info("demo: order produzida", "order_id", order.OrderID)
+					}
+				}
+			}
+		}()
+	}
+
 	cleanups := []func(){
 		func() {
 			slog.Info("Encerrando servidor HTTP...")
@@ -70,4 +99,3 @@ func main() {
 
 	lifecycle.WaitForShutdownSignal(ctx, cancel, cfg.ShutdownTimeout, cleanups...)
 }
-

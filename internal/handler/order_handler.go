@@ -1,20 +1,24 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/IBM/fp-go/v2/array"
 	"github.com/mrl00/kafka-event-driven-example/internal/handler/dto"
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
-	"github.com/mrl00/kafka-event-driven-example/internal/service"
 )
 
-type OrderHandler struct {
-	service *service.OrderService
+type OrderProcessor interface {
+	ProcessOrder(ctx context.Context, orders []kafka.OrderEvent) []string
 }
 
-func NewOrderHandler(service *service.OrderService) *OrderHandler {
+type OrderHandler struct {
+	service OrderProcessor
+}
+
+func NewOrderHandler(service OrderProcessor) *OrderHandler {
 	return &OrderHandler{service: service}
 }
 
@@ -26,11 +30,21 @@ func (h *OrderHandler) HandleCreateOrder() http.HandlerFunc {
 			return
 		}
 
-		failedIDs := h.service.ProcessOrder(r.Context(), array.Map(func(i dto.CreateOrderDTO) kafka.OrderEvent {
+		events := array.Map(func(i dto.CreateOrderDTO) kafka.OrderEvent{
 			return i.ToEvent()
-		})(input))
+		})(input)
+
+		failedIDs := h.service.ProcessOrder(r.Context(), events)
 
 		if len(failedIDs) > 0 {
+			if len(failedIDs) == len(events) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"error":   "kafka unavailable",
+					"failed":  failedIDs,
+				})
+				return
+			}
 			w.WriteHeader(http.StatusMultiStatus)
 			json.NewEncoder(w).Encode(map[string]interface{}{"failed": failedIDs})
 			return
