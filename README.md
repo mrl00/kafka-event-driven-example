@@ -10,9 +10,10 @@ A production-focused, event-driven architecture example in Go demonstrating Apac
 
 This project implements a microservices architecture with a focus on robustness:
 
-- **Order Producer**: HTTP service that publishes order events to Kafka. Uses **idempotent** production and asynchronous delivery confirmations via dedicated `deliveryChan` to guarantee no messages are lost or duplicated.
+- **Order Producer**: HTTP service that accepts orders via `POST /orders` and publishes them to Kafka. Uses **idempotent** production and asynchronous delivery confirmations via dedicated `deliveryChan`. Supports **DEMO_MODE** for generating hardcoded orders.
 - **Order Consumer**: Consumes and processes order events. Implements **Poison Pill** protection (corrupted/invalid messages are routed to a Dead Letter Queue) ensuring the service never stops due to a single bad message.
 - **Graceful Shutdown**: OS signal handling (SIGINT/SIGTERM) for clean resource teardown — Kafka buffer flush, consumer group exit, and HTTP server drain.
+- **Healthcheck**: Each service includes a static healthcheck binary for Docker HEALTHCHECK support on distroless images.
 
 ## 📋 Production Features
 
@@ -23,7 +24,8 @@ This project implements a microservices architecture with a focus on robustness:
 - **Dead Letter Queue**: Invalid/unparseable messages are routed to a `.dlq` topic with rich metadata headers
 - **Structured Logging**: `log/slog` with context propagation for traceability
 - **HTTP Server Hardening**: Read, Write, Idle, and ReadHeader timeouts configured to prevent resource exhaustion
-- **Health Checks**: HTTP endpoints for service health monitoring
+- **Health Checks**: HTTP endpoints for service health monitoring; Docker HEALTHCHECK via static healthcheck binary
+- **HTTP Order API**: `POST /orders` endpoint accepts order batches; returns 202 on success, 207 on partial failure, 503 when Kafka is unavailable
 - **CI/CD**: GitHub Actions for build, lint, test, Docker image publish, and cosign image signing
 
 ## 🚀 Quick Start
@@ -67,10 +69,11 @@ go run ./cmd/order-consumer
 
 | Service | URL |
 | :--- | :--- |
-| Order Producer | http://localhost:4000 |
-| Producer Health Check | http://localhost:4000/health |
-| Order Consumer | http://localhost:4001 |
-| Consumer Health Check | http://localhost:4001/health |
+| Order Producer | http://localhost:4001 |
+| Producer Health Check | http://localhost:4001/health |
+| Producer API (POST orders) | http://localhost:4001/orders |
+| Order Consumer | http://localhost:4002 |
+| Consumer Health Check | http://localhost:4002/health |
 
 ### Kafka Brokers
 
@@ -92,27 +95,34 @@ Configuration is managed via environment variables. For local development, creat
 | `KAFKA_NUM_PARTITIONS` | Number of topic partitions | `3` |
 | `KAFKA_REPLICATION_FACTOR` | Replication factor for topics | `3` |
 | `HTTP_PORT` | HTTP server port | `4000` |
-| `SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (Go duration) | `5s` |
+| `HTTP_READ_TIMEOUT` | HTTP read timeout (Go duration) | `15s` |
+| `HTTP_WRITE_TIMEOUT` | HTTP write timeout (Go duration) | `15s` |
+| `HTTP_IDLE_TIMEOUT` | HTTP idle timeout (Go duration) | `60s` |
+| `HTTP_READ_HEADER_TIMEOUT` | HTTP read header timeout (Go duration) | `5s` |
+| `SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (Go duration) | `30s` |
+| `DEMO_MODE` | Enable hardcoded order generation fallback | `false` |
 
 ## 📊 Project Structure
 
 ```
-kafka-event-driven-example/
+backend/
 ├── cmd/
+│   ├── healthcheck/             # Healthcheck binary for Docker HEALTHCHECK
 │   ├── order-producer/          # Order producer service entrypoint
 │   └── order-consumer/          # Order consumer service entrypoint
 ├── internal/
-│   ├── config/                  # Environment-based configuration loader
-│   ├── handler/                 # HTTP handlers (health check)
+│   ├── appconfig/               # Environment-based configuration loader
+│   ├── handler/                 # HTTP handlers (health check, order API)
+│   │   └── dto/                 # Request/response DTOs
+│   ├── kafka/                   # Kafka client: producer, consumer, DLQ, topic management
 │   ├── lifecycle/               # Graceful shutdown manager (signal handling, LIFO cleanup)
-│   ├── mykafka/                 # Kafka client: producer, consumer, DLQ, topic management
 │   ├── retry/                   # Generic retry engine with exponential backoff and jitter
 │   ├── router/                  # HTTP routing
-│   └── server/                  # HTTP server factory with production timeouts
+│   ├── server/                  # HTTP server factory with production timeouts
+│   └── service/                 # Business logic (order processing)
 ├── build/
 │   ├── Dockerfile.producer      # Multi-stage Docker build for producer
 │   └── Dockerfile.consumer      # Multi-stage Docker build for consumer
-├── docs/                        # Backlogs and documentation
 ├── docker-compose.yaml          # Full stack orchestration (Kafka cluster + services)
 └── .github/workflows/           # CI/CD pipelines
 ```
@@ -135,14 +145,13 @@ kafka-event-driven-example/
 
 ## 🔄 Graceful Shutdown Flow
 
-When a shutdown signal is received, the `lifecycle` package executes cleanup tasks in **LIFO** (reverse) order:
-
-1. **HTTP Server**: Calls `srv.Shutdown(ctx)` to stop accepting new connections and drain in-flight requests
-2. **Kafka Client**:
-   - **Producer**: Executes `producer.Flush(timeout)` to deliver buffered messages, then `producer.Close()`
-   - **Consumer**: Calls `consumer.Close()`, notifying the cluster for immediate group rebalancing
-3. **DLQ Producer**: Closes the DLQ producer connection
-4. **Context**: The parent context is cancelled, signaling all goroutines to stop
+When a shutdown signal is received, the `lifecycle` package:
+1. **Cancels the parent context**, signaling all goroutines to stop
+2. **Executes cleanups in LIFO** (reverse) order:
+   - **HTTP Server**: Calls `srv.Shutdown(ctx)` to stop accepting new connections and drain in-flight requests
+   - **Kafka Producer**: Executes `producer.Flush(timeout)` to deliver buffered messages, then `producer.Close()`
+   - **Kafka Consumer**: Calls `consumer.Close()`, notifying the cluster for immediate group rebalancing
+   - **DLQ Producer**: Closes the DLQ producer connection
 
 ## 🧪 Testing
 
@@ -163,16 +172,18 @@ The project includes unit tests for:
 - Retry engine (success after retries, fatal error abort, context cancellation)
 - Kafka config and broker list building
 - Producer context cancellation handling
-- DLQ topic naming
+- DLQ topic naming and header metadata (including retry_count)
 - Health check HTTP handler
+- Order handler (202 success, 400 invalid input, 207 partial failure, 503 unavailable)
+- Lifecycle (cleanup ordering, shutdown timeout, context cancellation)
 
 ## 🐳 Docker Details
 
 ### Multi-stage Builds
 
 Both services use multi-stage Docker builds for minimal runtime images:
-1. **Builder stage**: Compiles the Go application with CGO (required for librdkafka)
-2. **Runner stage**: Debian bookworm-slim with only `librdkafka1` and `ca-certificates`
+1. **Builder stage**: Compiles the Go application with CGO (required for librdkafka) and a static healthcheck binary
+2. **Runner stage**: `gcr.io/distroless/base-debian12` with only the Go binary, healthcheck binary, and dynamically linked library dependencies
 
 ### Docker Images
 
