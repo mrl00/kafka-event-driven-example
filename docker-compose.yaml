@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: ./build/Dockerfile.producer
-    #image: order-producer:latest
     container_name: order-producer
     hostname: order_producer
     ports:
@@ -24,7 +23,6 @@ services:
     build:
       context: .
       dockerfile: ./build/Dockerfile.consumer
-    #image: order-consumer:latest
     container_name: order_consumer
     hostname: order_consumer
     ports:
