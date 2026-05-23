@@ -101,7 +101,7 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 
 func TestLoadConfig_MissingBrokers(t *testing.T) {
 	if os.Getenv("TEST_MISSING_BROKERS") == "1" {
-		os.Unsetenv("KAFKA_BROKERS")
+		_ = os.Unsetenv("KAFKA_BROKERS")
 		LoadProducerConfig()
 		return
 	}
@@ -113,7 +113,8 @@ func TestLoadConfig_MissingBrokers(t *testing.T) {
 			filteredEnv = append(filteredEnv, e)
 		}
 	}
-	cmd.Env = append(filteredEnv, "TEST_MISSING_BROKERS=1")
+	filteredEnv = append(filteredEnv, "TEST_MISSING_BROKERS=1")
+	cmd.Env = filteredEnv
 
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {

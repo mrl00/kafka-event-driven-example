@@ -32,7 +32,7 @@ func TestWaitForShutdownSignal(t *testing.T) {
 
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		}()
 
 		done := make(chan struct{})
@@ -64,7 +64,7 @@ func TestWaitForShutdownSignal(t *testing.T) {
 
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+			_ = syscall.Kill(syscall.Getpid(), syscall.SIGINT)
 		}()
 
 		done := make(chan struct{})
@@ -85,7 +85,7 @@ func TestWaitForShutdownSignal(t *testing.T) {
 
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		}()
 
 		done := make(chan struct{})

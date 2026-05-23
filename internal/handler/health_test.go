@@ -12,7 +12,7 @@ import (
 func Test_HealthCheck(t *testing.T) {
 	t.Run("deve retornar 200 OK", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 		handler.HealthCheck()(w, r)
 
@@ -23,7 +23,7 @@ func Test_HealthCheck(t *testing.T) {
 
 	t.Run("deve retornar 'It\\'s Working' no body", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 		handler.HealthCheck()(w, r)
 
@@ -35,7 +35,7 @@ func Test_HealthCheck(t *testing.T) {
 
 	t.Run("deve retornar Content-Type text/plain", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 		handler.HealthCheck()(w, r)
 

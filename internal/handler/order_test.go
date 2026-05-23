@@ -12,6 +12,8 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/kafka"
 )
 
+const testOrderID = "ORD001"
+
 type mockOrderProcessor struct {
 	processFunc func(ctx context.Context, orders []kafka.OrderEvent) []string
 }
@@ -64,7 +66,7 @@ func TestHandleCreateOrder(t *testing.T) {
 	t.Run("deve retornar 207 quando algumas orders falham", func(t *testing.T) {
 		mock := &mockOrderProcessor{
 			processFunc: func(ctx context.Context, orders []kafka.OrderEvent) []string {
-				return []string{"ORD001"}
+				return []string{testOrderID}
 			},
 		}
 		h := handler.NewOrderHandler(mock)
@@ -96,7 +98,7 @@ func TestHandleCreateOrder(t *testing.T) {
 	t.Run("deve retornar 503 quando todas as orders falham", func(t *testing.T) {
 		mock := &mockOrderProcessor{
 			processFunc: func(ctx context.Context, orders []kafka.OrderEvent) []string {
-				return []string{"ORD001", "ORD002"}
+				return []string{testOrderID, "ORD002"}
 			},
 		}
 		h := handler.NewOrderHandler(mock)
@@ -133,7 +135,7 @@ func TestHandleCreateOrder(t *testing.T) {
 		h := handler.NewOrderHandler(mock)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/orders", nil)
+		r := httptest.NewRequest(http.MethodPost, "/orders", http.NoBody)
 		r.Header.Set("Content-Type", "application/json")
 
 		h.HandleCreateOrder()(w, r)
