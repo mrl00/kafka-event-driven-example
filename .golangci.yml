@@ -1,0 +1,41 @@
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    - contextcheck
+    - errname
+    - exhaustive
+    - goconst
+    - gocritic
+    - misspell
+    - nolintlint
+    - predeclared
+    - revive
+    - whitespace
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    revive:
+      rules:
+        - name: unexported-return
+          disabled: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

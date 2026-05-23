@@ -15,7 +15,6 @@ import (
 )
 
 func main() {
-
 	cfg := appconfig.LoadProducerConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -12,7 +12,7 @@ type CreateOrderDTO struct {
 	Amount     float64 `json:"amount"`
 }
 
-func NewOrderDTO(orderID string, customerID string, amount float64) CreateOrderDTO {
+func NewOrderDTO(orderID, customerID string, amount float64) CreateOrderDTO {
 	return CreateOrderDTO{
 		OrderID:    orderID,
 		CustomerID: customerID,

@@ -30,7 +30,7 @@ func (h *OrderHandler) HandleCreateOrder() http.HandlerFunc {
 			return
 		}
 
-		events := array.Map(func(i dto.CreateOrderDTO) kafka.OrderEvent{
+		events := array.Map(func(i dto.CreateOrderDTO) kafka.OrderEvent {
 			return i.ToEvent()
 		})(input)
 
@@ -39,17 +39,17 @@ func (h *OrderHandler) HandleCreateOrder() http.HandlerFunc {
 		if len(failedIDs) > 0 {
 			if len(failedIDs) == len(events) {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				json.NewEncoder(w).Encode(map[string]interface{}{
-					"error":   "kafka unavailable",
-					"failed":  failedIDs,
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"error":  "kafka unavailable",
+					"failed": failedIDs,
 				})
 				return
 			}
 			w.WriteHeader(http.StatusMultiStatus)
-			json.NewEncoder(w).Encode(map[string]interface{}{"failed": failedIDs})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"failed": failedIDs})
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte("Orders sent to processing"))
+		_, _ = w.Write([]byte("Orders sent to processing"))
 	}
 }

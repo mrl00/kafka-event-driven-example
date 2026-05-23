@@ -12,8 +12,7 @@ import (
 	"github.com/mrl00/kafka-event-driven-example/internal/retry"
 )
 
-type Producer = ckafka.Producer
-type Consumer = ckafka.Consumer
+const bootstrapServers = "bootstrap.servers"
 
 type kafkaError struct {
 	err       error
@@ -64,19 +63,18 @@ type OrderEvent struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func NewProducer(cfg Config) (*Producer, error) {
+func NewProducer(cfg Config) (*ckafka.Producer, error) {
 	var p *ckafka.Producer
 	retryCfg := retry.DefaultConfig()
 
 	err := retry.Do(context.Background(), retryCfg, func(ctx context.Context) error {
 		var err error
 		p, err = ckafka.NewProducer(&ckafka.ConfigMap{
-			"bootstrap.servers":  cfg.GetBrokers(),
+			bootstrapServers:     cfg.GetBrokers(),
 			"acks":               "all",
 			"retries":            5,
 			"enable.idempotence": true,
 		})
-
 		if err != nil {
 			return wrapRetryable(fmt.Errorf("failed to create producer: %w", err))
 		}
@@ -86,7 +84,7 @@ func NewProducer(cfg Config) (*Producer, error) {
 	return p, err
 }
 
-func ProduceOrder(ctx context.Context, producer *Producer, topic string, order OrderEvent) error {
+func ProduceOrder(ctx context.Context, producer Producer, topic string, order OrderEvent) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -107,7 +105,6 @@ func ProduceOrder(ctx context.Context, producer *Producer, topic string, order O
 			TopicPartition: ckafka.TopicPartition{Topic: &topic, Partition: ckafka.PartitionAny},
 			Value:          message,
 		}, deliveryChan)
-
 		if err != nil {
 			return wrapRetryable(fmt.Errorf("failed to produce message: %w", err))
 		}
@@ -129,24 +126,25 @@ func ProduceOrder(ctx context.Context, producer *Producer, topic string, order O
 	})
 }
 
-func NewConsumer(ctx context.Context, cfg Config) (*Consumer, error) {
-	var c *Consumer
+func NewConsumer(ctx context.Context, cfg Config) (*ckafka.Consumer, error) {
+	var c *ckafka.Consumer
 	retryCfg := retry.DefaultConfig()
 
 	err := retry.Do(ctx, retryCfg, func(ctx context.Context) error {
 		var err error
 		c, err = ckafka.NewConsumer(&ckafka.ConfigMap{
-			"bootstrap.servers":  cfg.GetBrokers(),
+			bootstrapServers:     cfg.GetBrokers(),
 			"group.id":           cfg.GroupID,
 			"auto.offset.reset":  "earliest",
-			"enable.auto.commit": true})
+			"enable.auto.commit": true,
+		})
 		if err != nil {
 			return wrapRetryable(fmt.Errorf("cannot create consumer: %w", err))
 		}
 
 		err = c.SubscribeTopics([]string{cfg.Topic}, nil)
 		if err != nil {
-			c.Close()
+			_ = c.Close()
 			return wrapRetryable(fmt.Errorf("failed to subscribe topic %s: %w", cfg.Topic, err))
 		}
 
@@ -156,7 +154,7 @@ func NewConsumer(ctx context.Context, cfg Config) (*Consumer, error) {
 	return c, err
 }
 
-func ConsumeOrders(ctx context.Context, consumer *Consumer, dlq *DLQProducer) error {
+func ConsumeOrders(ctx context.Context, consumer Consumer, dlq *DLQProducer) error {
 	slog.InfoContext(ctx, "Iniciando loop de consumo de ordens")
 
 	for {
@@ -197,9 +195,8 @@ func EnsureTopic(ctx context.Context, cfg Config) error {
 	retryCfg := retry.DefaultConfig()
 
 	return retry.Do(ctx, retryCfg, func(ctx context.Context) error {
-
 		admin, err := ckafka.NewAdminClient(&ckafka.ConfigMap{
-			"bootstrap.servers": cfg.GetBrokers(),
+			bootstrapServers: cfg.GetBrokers(),
 		})
 		if err != nil {
 			return wrapRetryable(fmt.Errorf("failed to create admin client: %w", err))

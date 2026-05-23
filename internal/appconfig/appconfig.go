@@ -58,12 +58,12 @@ func loadConfig(forConsumer bool) AppConfig {
 
 	numOfPartitions := 3
 	if os.Getenv("KAFKA_NUM_PARTITIONS") != "" {
-		fmt.Sscanf(os.Getenv("KAFKA_NUM_PARTITIONS"), "%d", &numOfPartitions)
+		_, _ = fmt.Sscanf(os.Getenv("KAFKA_NUM_PARTITIONS"), "%d", &numOfPartitions)
 	}
 
 	replicationFactor := 3
 	if os.Getenv("KAFKA_REPLICATION_FACTOR") != "" {
-		fmt.Sscanf(os.Getenv("KAFKA_REPLICATION_FACTOR"), "%d", &replicationFactor)
+		_, _ = fmt.Sscanf(os.Getenv("KAFKA_REPLICATION_FACTOR"), "%d", &replicationFactor)
 	}
 
 	httpPort := os.Getenv("HTTP_PORT")

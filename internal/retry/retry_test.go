@@ -27,7 +27,6 @@ func TestDo(t *testing.T) {
 			}
 			return nil
 		})
-
 		if err != nil {
 			t.Errorf("esperava sucesso, recebeu erro: %v", err)
 		}
@@ -66,6 +65,7 @@ func TestDo(t *testing.T) {
 
 		start := time.Now()
 		err := Do(ctx, cfg, func(ctx context.Context) error {
+			//nolint:misspell // Portuguese word, intentional
 			return errors.New("falha persistente")
 		})
 
@@ -80,4 +80,3 @@ func TestDo(t *testing.T) {
 		}
 	})
 }
-
