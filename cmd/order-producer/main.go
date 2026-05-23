@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+
 	cfg := appconfig.LoadProducerConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -98,4 +99,3 @@ func main() {
 
 	lifecycle.WaitForShutdownSignal(ctx, cancel, cfg.ShutdownTimeout, cleanups...)
 }
-

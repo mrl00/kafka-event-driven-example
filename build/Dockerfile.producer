@@ -1,3 +1,4 @@
+# check=skip=UndefinedVar
 # =============================================================================
 # Estágio 1: Builder
 # =============================================================================
@@ -21,6 +22,7 @@ RUN go mod download
 # (evita invalidar cache por mudanças em arquivos não relacionados)
 COPY internal/ ./internal/
 COPY cmd/order-producer/ ./cmd/order-producer/
+COPY cmd/healthcheck/ ./cmd/healthcheck/
 
 # Build de produção:
 # - CGO_ENABLED=1: necessário para librdkafka
@@ -28,6 +30,11 @@ COPY cmd/order-producer/ ./cmd/order-producer/
 RUN CGO_ENABLED=1 GOOS=linux go build \
   -ldflags="-s -w" \
   -o /app/order-producer ./cmd/order-producer/main.go
+
+# Healthcheck binário estático (sem CGO para distroless)
+RUN CGO_ENABLED=0 GOOS=linux go build \
+  -ldflags="-s -w" \
+  -o /app/healthcheck ./cmd/healthcheck/main.go
 
 # Coleta as libs dinâmicas necessárias em tempo de build
 # usando ldd para ser agnóstico à arquitetura (x86_64, arm64, etc.)
@@ -49,16 +56,17 @@ FROM gcr.io/distroless/base-debian12 AS runner
 
 WORKDIR /app
 
-# Copia o binário compilado
+# Copia os binários compilados
 COPY --from=builder /app/order-producer .
+COPY --from=builder /app/healthcheck .
 
 # CORRIGIDO: copia libs coletadas dinamicamente via ldd
 # Isso garante compatibilidade com qualquer arquitetura (x86_64, arm64, etc.)
 COPY --from=builder /libs/ /usr/lib/
 
 # Configurações de execução
-ENV PORT=4000
-EXPOSE $PORT
+ENV HTTP_PORT=${HTTP_PORT:-4000}
+EXPOSE $HTTP_PORT
 
 # Distroless não tem shell: formato JSON é obrigatório no ENTRYPOINT
 # O usuário 'nonroot' já vem criado na imagem distroless

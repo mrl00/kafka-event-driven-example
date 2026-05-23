@@ -6,7 +6,13 @@ services:
     container_name: order-producer
     hostname: order_producer
     ports:
-      - "4000:4000"
+      - 4001:${HTTP_PORT:-4000}
+    healthcheck:
+      test: ["CMD", "./healthcheck", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       kafka1:
         condition: service_healthy
@@ -26,8 +32,16 @@ services:
     container_name: order_consumer
     hostname: order_consumer
     ports:
-      - "4001:4000"
+      - 4002:${HTTP_PORT:-4000}
+    healthcheck:
+      test: ["CMD", "./healthcheck", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
+      order-producer:
+        condition: service_healthy
       kafka1:
         condition: service_healthy
       kafka2:
@@ -150,3 +164,4 @@ services:
 networks:
   kafka-cluster-net:
     driver: bridge
+    name: kafka-cluster-net
