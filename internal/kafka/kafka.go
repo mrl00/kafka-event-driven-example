@@ -228,7 +228,7 @@ func EnsureTopic(ctx context.Context, cfg Config) error {
 
 		for _, result := range results {
 			if result.Error.Code() != ckafka.ErrNoError && result.Error.Code() != ckafka.ErrTopicAlreadyExists {
-				return fmt.Errorf("topic creation error for %s: %v", result.Topic, result.Error)
+				return fmt.Errorf("topic creation error for %s: %w", result.Topic, result.Error)
 			}
 		}
 
