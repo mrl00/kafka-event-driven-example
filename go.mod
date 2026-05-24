@@ -6,6 +6,8 @@ require (
 	github.com/IBM/fp-go/v2 v2.2.78
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/joho/godotenv v1.5.1
+	github.com/testcontainers/testcontainers-go v0.36.0
+	github.com/testcontainers/testcontainers-go/modules/kafka v0.36.0
 )
 
 require (
@@ -46,8 +48,6 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/testcontainers/testcontainers-go v0.36.0 // indirect
-	github.com/testcontainers/testcontainers-go/modules/kafka v0.36.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -60,7 +60,5 @@ require (
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.29.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
