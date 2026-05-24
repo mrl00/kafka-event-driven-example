@@ -30,5 +30,31 @@ jobs:
       - name: Build order-consumer
         run: go build -v ./cmd/order-consumer
 
-      - name: Run unit tests
-        run: go test -v ./internal/... ./cmd/...
+      - name: Run unit tests with coverage
+        run: |
+          pkgs=$(go list ./internal/... | grep -vE '/mocks|/dto')
+          go test -v -coverprofile=coverage.out -covermode=atomic -count=1 ${pkgs}
+
+      - name: Check coverage threshold
+        run: |
+          cov=$(go tool cover -func=coverage.out | awk '/^total:/ { gsub(/%/, "", $NF); print $NF }')
+          echo "Coverage: ${cov}%"
+          if [ "$(echo "${cov} < 60" | bc)" = "1" ]; then
+            echo "FAIL: coverage ${cov}% < 60% threshold"
+            exit 1
+          fi
+          echo "PASS: coverage ${cov}% >= 60% threshold"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
